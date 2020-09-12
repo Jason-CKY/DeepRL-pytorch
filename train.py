@@ -4,6 +4,7 @@ import argparse
 import os
 import json
 import torch
+import numpy as np
 
 from Logger.logger import Logger
 from tqdm import tqdm
@@ -16,7 +17,7 @@ def parse_arguments():
     parser.add_argument('--log_dir', type=str, default='Logger/logs', help='path to store training logs in .json format')
     parser.add_argument('--resume', type=str, help='path to weights to resume training from')
     parser.add_argument('--timesteps', type=int, required=True, help='specify number of timesteps to train for')
-    parser.add_argument('--checkpoint_freq', type=int, default=1000, help='number of timesteps before each checkpoint')
+    parser.add_argument('--checkpoint_freq', type=int, default=50000, help='number of timesteps before each checkpoint')
     parser.add_argument('--print_freq', type=int, default=5, help='number of episodes before printing progress')
   
     return parser.parse_args()
@@ -69,6 +70,7 @@ def main():
     action = agent.agent_start(last_state)
     reward = 0.0
     episode_num = 1
+    max_episode_reward = -np.inf
     for timestep in tqdm(range(starting_timestep, args.timesteps+1)):
         if is_terminal or agent.episode_steps > max_episode_steps:
             episode_num += 1
@@ -83,6 +85,8 @@ def main():
                 print("Environment solved, saving checkpoint")
                 agent.save_checkpoint(timestep, solved=True)
                 break
+            if episode_reward >= max_episode_reward:
+                agent.save_checkpoint(timestep, best=True)
 
             is_terminal = False
             last_state = env.reset()
@@ -92,8 +96,9 @@ def main():
             state, reward, is_terminal, info = env.step(action)
             agent.agent_step(reward, state)         
 
-        if timestep%args.checkpoint_freq == 0:
+        if timestep%args.checkpoint_freq == 0 or timestep == args.timesteps:
             agent.save_checkpoint(timestep)
+
 
     env.close()
 

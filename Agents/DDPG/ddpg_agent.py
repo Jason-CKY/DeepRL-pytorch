@@ -236,13 +236,15 @@ class DDPG_Agent(BaseAgent):
         self.critic.eval()
         self.critic_target.eval()
     
-    def save_checkpoint(self, timesteps, solved=False):
+    def save_checkpoint(self, timesteps, solved=False, best=False):
         """Saving networks and optimizer paramters to a file in 'checkpoint_dir'
         Args:
             timesteps: number of timesteps the model has been trained on
         """
         if solved:
             checkpoint_name = os.path.join(self.checkpoint_dir, "solved.pth")
+        elif best:
+            checkpoint_name = os.path.join(self.checkpoint_dir, "best.pth")
         else:
             checkpoint_name = os.path.join(self.checkpoint_dir, f"timestep_{timesteps}.pth")
         
