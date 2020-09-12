@@ -1,0 +1,20 @@
+{
+    "network_config": {
+        "hidden_layer1": 400,
+        "hidden_layer2": 300,
+        "seed": 0
+    },
+    "optimizer_config": {
+        "actor_lr": 0.0001,
+        "critic_lr": 0.001,
+        "weight_decay": 0.01
+    },
+    "name": "DDPG",
+    "replay_buffer_size": 1000000,
+    "minibatch_size": 256,
+    "num_replay_updates_per_step": 1,
+    "gamma": 0.99,
+    "tau": 0.001,
+    "checkpoint_dir": "model_weights",
+    "seed": 0
+}
