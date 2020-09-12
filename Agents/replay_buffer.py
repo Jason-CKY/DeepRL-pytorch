@@ -19,7 +19,6 @@ class ReplayBuffer:
         self.buffer = deque(maxlen=size)
         self.minibatch_size = minibatch_size 
         self.seed = random.seed(seed)
-        # self.rand_generator = np.random.RandomState(seed)
         self.max_size = size
 
     def append(self, state, action, reward, terminal, next_state):
@@ -38,8 +37,6 @@ class ReplayBuffer:
         Returns:
             A list of transition tuples including state, action, reward, terminal, and next state
         '''
-        # idxs = self.rand_generator.choice(np.arange(len(self.buffer)), size=self.minibatch_size)
-        # sample = [self.buffer[idx] for idx in idxs]
         sample = random.sample(self.buffer, self.minibatch_size)
         states = []
         actions = []

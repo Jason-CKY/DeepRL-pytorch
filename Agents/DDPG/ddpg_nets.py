@@ -11,7 +11,7 @@ def fanin_init(size):
 class Critic(nn.Module):
     """ Critic Model Architecture for Agent
     """ 
-    def __init__(self, critic_config, h1=400, h2=300):
+    def __init__(self, critic_config):
         '''
         Assume critic_config:dictionary contains:
             state_dim: int
@@ -20,6 +20,8 @@ class Critic(nn.Module):
         super(Critic, self).__init__()
         state_dim = critic_config['state_dim']
         action_dim = critic_config['action_dim']
+        h1 = critic_config['hidden_layer1']
+        h2 = critic_config['hidden_layer2']
         self.fc1 = nn.Linear(state_dim, h1)
         self.fc1.weight.data = fanin_init(self.fc1.weight.data.size())
         self.fc1.bias.data = fanin_init(self.fc1.bias.data.size())
@@ -50,7 +52,7 @@ class Actor(nn.Module):
     """ Actor Model Architecture for Agent
     """ 
 
-    def __init__(self, actor_config, h1=400, h2=300):
+    def __init__(self, actor_config):
         '''
         Assume actor_config:dictionary contains:
             state_dim: int
@@ -59,6 +61,8 @@ class Actor(nn.Module):
         super(Actor, self).__init__()
         state_dim = actor_config['state_dim']
         action_dim = actor_config['action_dim']
+        h1 = actor_config['hidden_layer1']
+        h2 = actor_config['hidden_layer2']
         self.fc1 = nn.Linear(state_dim, h1)
         self.fc1.weight.data = fanin_init(self.fc1.weight.data.size())
         self.fc1.bias.data = fanin_init(self.fc1.bias.data.size())

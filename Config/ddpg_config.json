@@ -11,10 +11,10 @@
     },
     "name": "DDPG",
     "replay_buffer_size": 1000000,
-    "minibatch_size": 256,
+    "minibatch_size": 512,
     "num_replay_updates_per_step": 1,
     "gamma": 0.99,
     "tau": 0.001,
-    "checkpoint_dir": "model_weights",
+    "checkpoint_dir": "Model_Weights",
     "seed": 0
 }
