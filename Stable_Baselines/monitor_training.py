@@ -21,7 +21,7 @@ def parse_arguments():
     return parser.parse_args()
 
 def main():
-    args = parse_arguments
+    args = parse_arguments()
     # Create log dir
     log_dir = "logs"
     os.makedirs(args.log_dir, exist_ok=True)
