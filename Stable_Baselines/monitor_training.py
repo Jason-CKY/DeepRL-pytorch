@@ -23,7 +23,6 @@ def parse_arguments():
 def main():
     args = parse_arguments()
     # Create log dir
-    log_dir = "logs"
     os.makedirs(args.log_dir, exist_ok=True)
 
     # Create and wrap the environment
@@ -34,7 +33,7 @@ def main():
     n_actions = env.action_space.shape[-1]
     action_noise = NormalActionNoise(mean=np.zeros(n_actions), sigma=0.1 * np.ones(n_actions))
     # Create the callback: check every 1000 steps
-    callback = SaveOnBestTrainingRewardCallback(check_freq=1000, log_dir=log_dir)
+    callback = SaveOnBestTrainingRewardCallback(check_freq=1000, log_dir=args.log_dir)
     # Create RL model
     if args.agent == 'ddpg':
         model = DDPG('MlpPolicy', env, action_noise=action_noise, verbose=0)
