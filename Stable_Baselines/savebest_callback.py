@@ -1,6 +1,7 @@
 import os
-from stable_baselines.results_plotter import load_results, ts2xy
-from stable_baselines.common.callbacks import BaseCallback
+from stable_baselines3.common.results_plotter import load_results, ts2xy
+from stable_baselines3.common.callbacks import BaseCallback
+import numpy as np
 
 class SaveOnBestTrainingRewardCallback(BaseCallback):
     """
@@ -33,15 +34,15 @@ class SaveOnBestTrainingRewardCallback(BaseCallback):
               # Mean training reward over the last 100 episodes
               mean_reward = np.mean(y[-100:])
               if self.verbose > 0:
-                print("Num timesteps: {}".format(self.num_timesteps))
-                print("Best mean reward: {:.2f} - Last mean reward per episode: {:.2f}".format(self.best_mean_reward, mean_reward))
+                print(f"Num timesteps: {self.num_timesteps}")
+                print(f"Best mean reward: {self.best_mean_reward:.2f} - Last mean reward per episode: {mean_reward:.2f}")
 
               # New best model, you could save the agent here
               if mean_reward > self.best_mean_reward:
                   self.best_mean_reward = mean_reward
                   # Example for saving best model
                   if self.verbose > 0:
-                    print("Saving new best model to {}".format(self.save_path))
+                    print(f"Saving new best model to {self.save_path}.zip")
                   self.model.save(self.save_path)
 
         return True

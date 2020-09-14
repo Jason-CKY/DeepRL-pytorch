@@ -6,8 +6,10 @@ import json
 import torch
 import numpy as np
 
-from Logger.logger import Logger
+# from Logger.logger import Logger
 from tqdm import tqdm
+from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.results_plotter import load_results, ts2xy
 from Wrappers.normalized_action import NormalizedActions
 
 def parse_arguments():
@@ -38,6 +40,10 @@ def main():
     args = parse_arguments()
     # -------- set up environment --------
     env = NormalizedActions(gym.make(args.env))
+    log_dir = os.path.join(args.log_dir, args.env, args.agent)
+    os.makedirs(log_dir, exist_ok=True)
+    # -------- set up monitor to record logs --------
+    env = Monitor(env, log_dir)
 
     # -------- set up agent --------
     if args.agent.lower() == 'ddpg':
@@ -50,9 +56,6 @@ def main():
         
     agent_parameters = update_agent_parameters(agent_parameters, env)
     agent.agent_init(agent_parameters)
-
-    # Set up logs for the training session
-    logger = Logger(agent_parameters, env)
 
     # -------- load checkpoint if any --------
     if args.resume is None:
@@ -70,7 +73,7 @@ def main():
     action = agent.agent_start(last_state)
     reward = 0.0
     episode_num = 1
-    max_episode_reward = -np.inf
+    best_mean_reward = -np.inf
     for timestep in tqdm(range(starting_timestep, args.timesteps+1)):
         if is_terminal or agent.episode_steps > max_episode_steps:
             episode_num += 1
@@ -78,15 +81,24 @@ def main():
             # record the episode reward
             episode_reward = agent.sum_rewards
             episode_steps = agent.episode_steps
-            logger.log_episode(episode_reward, episode_steps)
-            if args.print_freq%episode_num:
-                print('Timestep {}/{} | Episode_Reward {}'.format(timestep, args.timesteps, episode_reward))
+            if args.checkpoint_freq%episode_num:
+                # Retrieve training reward
+                x, y = ts2xy(load_results(log_dir), 'timesteps')
+                if len(x) > 0:
+                    # Mean training reward over the last 100 episodes
+                    mean_reward = np.mean(y[-100:])
+                    print("Num timesteps: {}".format(timestep))
+                    print("Best mean reward: {:.2f} - Last mean reward per episode: {:.2f}".format(best_mean_reward, mean_reward))
+
+                    # New best model
+                    if mean_reward > best_mean_reward:
+                        best_mean_reward = mean_reward
+                        agent.save_checkpoint(timestep, best=True)
+
             if reward_threshold is not None and episode_reward >= reward_threshold:
                 print("Environment solved, saving checkpoint")
                 agent.save_checkpoint(timestep, solved=True)
                 break
-            if episode_reward >= max_episode_reward:
-                agent.save_checkpoint(timestep, best=True)
 
             is_terminal = False
             last_state = env.reset()

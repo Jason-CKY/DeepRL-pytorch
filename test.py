@@ -3,6 +3,7 @@ import pybullet_envs
 import argparse
 import os
 import json
+import torch
 
 from Wrappers.normalized_action import NormalizedActions
 
@@ -21,6 +22,7 @@ def update_agent_parameters(agent_parameters, env):
     state_dim = env.observation_space.shape[0]
     action_dim = env.action_space.shape[0]
 
+    agent_parameters['device'] = "cuda" if torch.cuda.is_available() else "cpu"
     if agent_parameters['name'] == 'random_policy':
         agent_parameters['action_space'] = env.action_space
     agent_parameters['network_config']['state_dim'] = state_dim
