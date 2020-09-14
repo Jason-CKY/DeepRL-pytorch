@@ -20,7 +20,7 @@ def parse_arguments():
   
     return parser.parse_args()
 
-def main()
+def main():
     args = parse_arguments
     # Create log dir
     log_dir = "logs"
@@ -38,7 +38,7 @@ def main()
     # Create RL model
     if args.agent == 'ddpg':
         model = DDPG('MlpPolicy', env, action_noise=action_noise, verbose=0)
-        
+
     # Train the agent
     model.learn(total_timesteps=args.timesteps, callback=callback)
 
