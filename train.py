@@ -6,45 +6,41 @@ import json
 import torch
 import numpy as np
 
-# from Logger.logger import Logger
-from tqdm import tqdm
-from stable_baselines3.common.monitor import Monitor
-from stable_baselines3.common.results_plotter import load_results, ts2xy
 from Wrappers.normalized_action import NormalizedActions
+
+from tqdm import tqdm
+from stable_baselines3.common.results_plotter import load_results, ts2xy
+from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.cmd_util import make_vec_env
+from stable_baselines3.common.vec_env import VecNormalize
+from stable_baselines3.common.evaluation import evaluate_policy
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--env', type=str, default='HumanoidBulletEnv-v0', help='environment_id')
+    parser.add_argument('--env', type=str, default='AntBulletEnv-v0', help='environment_id')
     parser.add_argument('--agent', type=str, default='ddpg', help='specify type of agent (e.g. DDPG/TRPO/PPO/random)')
-    parser.add_argument('--log_dir', type=str, default='Logger/logs', help='path to store training logs in .json format')
+    parser.add_argument('--save_dir', type=str, default='Model_Weights', help='path to store training logs in .json format')
     parser.add_argument('--resume', type=str, help='path to weights to resume training from')
-    parser.add_argument('--timesteps', type=int, required=True, help='specify number of timesteps to train for')
+    parser.add_argument('--timesteps', type=int, default=10000, help='specify number of timesteps to train for')
     parser.add_argument('--checkpoint_freq', type=int, default=50000, help='number of timesteps before each checkpoint')
     parser.add_argument('--print_freq', type=int, default=5, help='number of episodes before printing progress')
   
     return parser.parse_args()
 
-def update_agent_parameters(agent_parameters, env):
-    state_dim = env.observation_space.shape[0]
-    action_dim = env.action_space.shape[0]
-
+def update_agent_parameters(agent_parameters, env, save_dir):
+    agent_parameters['action_space'] = env.action_space
+    agent_parameters['observation_space'] = env.observation_space
     agent_parameters['device'] = "cuda" if torch.cuda.is_available() else "cpu"
-    agent_parameters['network_config']['state_dim'] = state_dim
-    agent_parameters['network_config']['action_dim'] = action_dim
 
-    checkpoint_dir = agent_parameters['checkpoint_dir']
-    agent_parameters['checkpoint_dir'] = os.path.join(checkpoint_dir, env.spec.id)
+    agent_parameters['checkpoint_dir'] = save_dir
     return agent_parameters
 
 def main():
     args = parse_arguments()
-    # -------- set up environment --------
-    env = NormalizedActions(gym.make(args.env))
-    log_dir = os.path.join(args.log_dir, args.env, args.agent)
-    os.makedirs(log_dir, exist_ok=True)
-    # -------- set up monitor to record logs --------
-    env = Monitor(env, log_dir)
-
+    # -------- set up environment and monitor logs --------
+    save_dir = os.path.join(args.save_dir, args.env, args.agent)
+    env = make_vec_env(args.env, n_envs=1, monitor_dir=save_dir)
+    env = VecNormalize(env, norm_obs=True, norm_reward=True, clip_obs=10.)
     # -------- set up agent --------
     if args.agent.lower() == 'ddpg':
         from Agents.DDPG.ddpg_agent import DDPG_Agent
@@ -54,7 +50,7 @@ def main():
     with open(agent_config_path) as f:
         agent_parameters = json.load(f)
         
-    agent_parameters = update_agent_parameters(agent_parameters, env)
+    agent_parameters = update_agent_parameters(agent_parameters, env, save_dir)
     agent.agent_init(agent_parameters)
 
     # -------- load checkpoint if any --------
@@ -66,10 +62,10 @@ def main():
 
 
     # -------- training loop --------
-    reward_threshold = env.spec.reward_threshold
-    max_episode_steps = env.spec.max_episode_steps
+    reward_threshold = env.envs[0].spec.reward_threshold
+    max_episode_steps = env.envs[0].spec.max_episode_steps
     is_terminal = False
-    last_state = env.reset()
+    last_state = env.reset().flatten()                 # flatten() to return the actual state from the vectorized state
     action = agent.agent_start(last_state)
     reward = 0.0
     episode_num = 1
@@ -83,7 +79,7 @@ def main():
             episode_steps = agent.episode_steps
             if args.checkpoint_freq%episode_num:
                 # Retrieve training reward
-                x, y = ts2xy(load_results(log_dir), 'timesteps')
+                x, y = ts2xy(load_results(save_dir), 'timesteps')
                 if len(x) > 0:
                     # Mean training reward over the last 100 episodes
                     mean_reward = np.mean(y[-100:])
@@ -101,12 +97,13 @@ def main():
                 break
 
             is_terminal = False
-            last_state = env.reset()
+            last_state = env.reset().flatten()         # flatten() to return the actual state from the vectorized state
             action = agent.agent_start(last_state)
 
         else:
+            action = np.expand_dims(action, 0)
             state, reward, is_terminal, info = env.step(action)
-            agent.agent_step(reward, state)         
+            action = agent.agent_step(reward.flatten(), state.flatten())       # flatten() to return the actual state from the vectorized state  
 
         if timestep%args.checkpoint_freq == 0 or timestep == args.timesteps:
             agent.save_checkpoint(timestep)

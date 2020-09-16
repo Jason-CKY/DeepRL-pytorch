@@ -15,6 +15,6 @@
     "num_replay_updates_per_step": 1,
     "gamma": 0.99,
     "tau": 0.001,
-    "checkpoint_dir": "Model_Weights",
+    "noise": "Gaussian",
     "seed": 0
 }

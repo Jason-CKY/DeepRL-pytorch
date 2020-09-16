@@ -7,15 +7,18 @@ import argparse
 from stable_baselines3 import DDPG
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.noise import NormalActionNoise
+from stable_baselines3.common.cmd_util import make_vec_env
+from stable_baselines3.common.vec_env import VecNormalize
+from stable_baselines3.common.evaluation import evaluate_policy
 
 from savebest_callback import SaveOnBestTrainingRewardCallback
 
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--env', type=str, default='HumanoidBulletEnv-v0', help='environment_id')
+    parser.add_argument('--env', type=str, default='AntBulletEnv-v0', help='environment_id')
     parser.add_argument('--agent', type=str, default='ddpg', help='specify type of agent (e.g. DDPG/TRPO/PPO/random)')
-    parser.add_argument('--log_dir', type=str, default='logs', help='path to store training logs in .json format')
+    parser.add_argument('--log_dir', type=str, default='logs', help='path to store training logs and weights')
     parser.add_argument('--timesteps', type=int, required=True, help='specify number of timesteps to train for')
   
     return parser.parse_args()
@@ -27,9 +30,9 @@ def main():
     os.makedirs(log_dir, exist_ok=True)
 
     # Create and wrap the environment
-    env = gym.make(args.env)
-    # Logs will be saved in log_dir/monitor.csv
-    env = Monitor(env, log_dir)
+    env = make_vec_env(args.env, n_envs=1, monitor_dir=log_dir)
+    env = VecNormalize(env, norm_obs=True, norm_reward=True, clip_obs=10.)
+
     # Create action noise because TD3 and DDPG use a deterministic policy
     n_actions = env.action_space.shape[-1]
     action_noise = NormalActionNoise(mean=np.zeros(n_actions), sigma=0.1 * np.ones(n_actions))
@@ -41,6 +44,7 @@ def main():
 
     # Train the agent
     model.learn(total_timesteps=args.timesteps, callback=callback)
+    env.save(os.path.join(args.log_dir, args.env, args.agent, "vec_normalize.pkl"))
 
 if __name__ == '__main__':
     main()

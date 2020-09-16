@@ -7,7 +7,7 @@ import torch.nn.functional as F
 import torch
 import numpy as np
 import os
-
+from stable_baselines3.common.noise import NormalActionNoise
 class DDPG_Agent(BaseAgent):
     def __init__(self):
         pass
@@ -33,6 +33,10 @@ class DDPG_Agent(BaseAgent):
         self.replay_buffer = ReplayBuffer(agent_config['replay_buffer_size'],
                                         agent_config['minibatch_size'],
                                         agent_config.get('seed'))
+        self.action_space = agent_config['action_space']
+        self.obs_space = agent_config['observation_space']
+        agent_config['network_config']['state_dim'] = self.obs_space.shape[-1]
+        agent_config['network_config']['action_dim'] = self.action_space.shape[-1]
         # define network
         self.actor = Actor(agent_config['network_config']).to(self.device)
         self.actor_target = Actor(agent_config['network_config']).to(self.device)
@@ -49,7 +53,13 @@ class DDPG_Agent(BaseAgent):
         self.discount = agent_config['gamma']
         self.tau = agent_config['tau']
 
-        self.noise = OUNoise(agent_config['network_config']['action_dim'])
+        self.noise_type = agent_config['noise']
+        n_actions = self.action_space.shape[-1]
+        if self.noise_type == 'OUNoise':
+            self.noise = OUNoise(n_actions)
+        else:
+            self.noise = NormalActionNoise(mean=np.zeros(n_actions), sigma=0.1 * np.ones(n_actions))
+
         self.rand_generator = np.random.RandomState(agent_config.get('seed'))
 
         self.last_state = None
@@ -89,6 +99,7 @@ class DDPG_Agent(BaseAgent):
             Qprime = rewards + (self.discount * next_Q)
 
         Qvals = self.critic(states, actions)
+        assert Qvals.shape == Qprime.shape
         critic_loss = F.mse_loss(Qvals, Qprime)
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
@@ -126,11 +137,16 @@ class DDPG_Agent(BaseAgent):
             with torch.no_grad():
                 action = self.actor(state).cpu().detach().numpy()
 
-        if add_noise:
-            action = self.noise.get_action(action)  # add noise
+        if add_noise:                                       # add noise
+            if self.noise_type == 'OUNoise':
+                action = self.noise.get_action(action)  
+            else:
+                action += self.noise()
 
-        action = np.clip(action, -1, 1)         # clip to tanh range [-1, 1]
-                
+        action = np.clip(action, -1, 1)                             # clip to tanh range [-1, 1]
+        action = (action + 1) / 2                                   # [-1, 1] => [0, 1] 
+        action *= (self.action_space.high - self.action_space.low)  # [0, 1] => [0, high-low] adjust range of outputs
+        action += self.action_space.low                             # [low, high]
         return action
 
     def agent_start(self, state):
@@ -258,6 +274,7 @@ class DDPG_Agent(BaseAgent):
             'critic_optimizer': self.critic_optimizer.state_dict()
         }
         torch.save(checkpoint, checkpoint_name)
+        self.replay_buffer.save(os.path.join(self.checkpoint_dir, "replay_buffer.pickle"))
         print(f"checkpoint saved at {checkpoint_name}")
     
     def get_latest_path(self):
@@ -282,6 +299,7 @@ class DDPG_Agent(BaseAgent):
             checkpoint_path = self.get_latest_path()
 
         if os.path.isfile(checkpoint_path):
+            self.replay_buffer.load(os.path.join(self.checkpoint_dir, "replay_buffer.pickle"))
             key = 'cuda' if torch.cuda.is_available() else 'cpu'
             checkpoint = torch.load(checkpoint_path, map_location=key)
             self.actor.load_state_dict(checkpoint['actor'])

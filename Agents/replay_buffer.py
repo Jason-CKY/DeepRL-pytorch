@@ -1,6 +1,7 @@
 import numpy as np
-from collections import namedtuple, deque
+from collections import deque
 import random
+import pickle
 
 class ReplayBuffer:
     """Replay Buffer class for the agent
@@ -47,7 +48,7 @@ class ReplayBuffer:
             state, action, reward, terminal, next_state = experience
             states.append(state)
             actions.append(action)
-            rewards.append([reward])
+            rewards.append(reward)
             terminals.append([terminal])
             next_states.append(next_state)
         
@@ -55,3 +56,12 @@ class ReplayBuffer:
 
     def size(self):
         return len(self.buffer)
+
+    def save(self, filename):
+        with open(filename, 'wb') as f:
+            pickle.dump(self.buffer, f)
+
+    def load(self, filename):
+        with open(filename, 'rb') as f:
+            self.buffer = pickle.load(f)
+        assert x.maxlen == self.max_size, "Attempted to load buffer with different max size"
