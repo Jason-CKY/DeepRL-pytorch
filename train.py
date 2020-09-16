@@ -21,9 +21,8 @@ def parse_arguments():
     parser.add_argument('--agent', type=str, default='ddpg', help='specify type of agent (e.g. DDPG/TRPO/PPO/random)')
     parser.add_argument('--save_dir', type=str, default='Model_Weights', help='path to store training logs in .json format')
     parser.add_argument('--resume', type=str, help='path to weights to resume training from')
-    parser.add_argument('--timesteps', type=int, default=10000, help='specify number of timesteps to train for')
+    parser.add_argument('--timesteps', type=int, required=True, help='specify number of timesteps to train for')
     parser.add_argument('--checkpoint_freq', type=int, default=50000, help='number of timesteps before each checkpoint')
-    parser.add_argument('--print_freq', type=int, default=5, help='number of episodes before printing progress')
   
     return parser.parse_args()
 
@@ -77,19 +76,18 @@ def main():
             # record the episode reward
             episode_reward = agent.sum_rewards
             episode_steps = agent.episode_steps
-            if args.checkpoint_freq%episode_num:
-                # Retrieve training reward
-                x, y = ts2xy(load_results(save_dir), 'timesteps')
-                if len(x) > 0:
-                    # Mean training reward over the last 100 episodes
-                    mean_reward = np.mean(y[-100:])
-                    print("Num timesteps: {}".format(timestep))
-                    print("Best mean reward: {:.2f} - Last mean reward per episode: {:.2f}".format(best_mean_reward, mean_reward))
+            # Retrieve training reward
+            x, y = ts2xy(load_results(save_dir), 'timesteps')
+            if len(x) > 0:
+                # Mean training reward over the last 100 episodes
+                mean_reward = np.mean(y[-100:])
+                print("Num timesteps: {}".format(timestep))
+                print("Best mean reward: {:.2f} - Last mean reward per episode: {:.2f}".format(best_mean_reward, mean_reward))
 
-                    # New best model
-                    if mean_reward > best_mean_reward:
-                        best_mean_reward = mean_reward
-                        agent.save_checkpoint(timestep, best=True)
+                # New best model
+                if mean_reward > best_mean_reward:
+                    best_mean_reward = mean_reward
+                    agent.save_checkpoint(timestep, best=True)
 
             if reward_threshold is not None and episode_reward >= reward_threshold:
                 print("Environment solved, saving checkpoint")
@@ -107,7 +105,6 @@ def main():
 
         if timestep%args.checkpoint_freq == 0 or timestep == args.timesteps:
             agent.save_checkpoint(timestep)
-
 
     env.close()
 
