@@ -41,11 +41,11 @@ def main():
     if args.agent == 'random':
         from Agents.random_agent import Random_Agent
         agent = Random_Agent()
-        agent_config_path = "config/random_config.json"
+        agent_config_path = "Config/random_config.json"
     elif args.agent == 'ddpg':
         from Agents.DDPG.ddpg_agent import DDPG_Agent
         agent = DDPG_Agent()
-        agent_config_path = "config/ddpg_config.json"
+        agent_config_path = "Config/ddpg_config.json"
 
     with open(agent_config_path) as f:
         agent_parameters = json.load(f)

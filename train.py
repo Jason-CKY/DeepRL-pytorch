@@ -44,7 +44,7 @@ def main():
     if args.agent.lower() == 'ddpg':
         from Agents.DDPG.ddpg_agent import DDPG_Agent
         agent = DDPG_Agent()
-        agent_config_path = "config/ddpg_config.json"
+        agent_config_path = "Config/ddpg_config.json"
 
     with open(agent_config_path) as f:
         agent_parameters = json.load(f)
