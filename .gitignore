@@ -2,3 +2,5 @@ __pycache__
 .vscode
 testcode.py
 setup.bat
+Stable_Baselines/logs/*
+Model_Weights/*
