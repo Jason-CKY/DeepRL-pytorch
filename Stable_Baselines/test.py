@@ -41,23 +41,11 @@ def main():
     done = False
     obs = env.reset()
     x = nn.Flatten()
-    # print(obs.shape)
-    # print(obs.flatten())
-    # print(obs[0].flatten())
-    # print(obs[0])
-    # return
     action = model.predict(obs)
 
     if args.timesteps is None:
         while not done: 
             action, _= model.predict(obs)
-            # print(action)
-            # print(type(action))
-            # print(action.shape)
-            # print(action.flatten())
-            # print(np.expand_dims(action.flatten(), 0))
-            action = np.expand_dims(action.flatten(), 0)
-            # return
             obs, reward, done, info = env.step(action)
             env.render()
     else:
