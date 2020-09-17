@@ -6,11 +6,14 @@ import json
 import torch
 
 from Wrappers.normalized_action import NormalizedActions
+from stable_baselines3.common.cmd_util import make_vec_env
+from stable_baselines3.common.vec_env import VecNormalize
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--env', type=str, default='HumanoidBulletEnv-v0', help='environment_id')
-    parser.add_argument('--agent', type=str, default='random', help='specify type of agent (e.g. DDPG/TRPO/PPO/random)')
+    parser.add_argument('--env', type=str, default='AntBulletEnv-v0', help='environment_id')
+    parser.add_argument('--agent', type=str, default='ddpg', help='specify type of agent (e.g. DDPG/TRPO/PPO/random)')
+    parser.add_argument('--save_dir', type=str, default='Model_Weights', help='path to store training logs in .json format')
     parser.add_argument('--render', action='store_true', help='if true, display human renders of the environment')
     parser.add_argument('--load_latest', action='store_true', help='if true, load the latest saved model from the checkpoint directory')
     parser.add_argument('--load', type=str, help='specify load path')
@@ -18,23 +21,24 @@ def parse_arguments():
 
     return parser.parse_args()
 
-def update_agent_parameters(agent_parameters, env):
-    state_dim = env.observation_space.shape[0]
-    action_dim = env.action_space.shape[0]
-
+def update_agent_parameters(agent_parameters, env, save_dir):
+    agent_parameters['action_space'] = env.action_space
+    agent_parameters['observation_space'] = env.observation_space
     agent_parameters['device'] = "cuda" if torch.cuda.is_available() else "cpu"
-    if agent_parameters['name'] == 'random_policy':
-        agent_parameters['action_space'] = env.action_space
-    agent_parameters['network_config']['state_dim'] = state_dim
-    agent_parameters['network_config']['action_dim'] = action_dim
 
-    checkpoint_dir = agent_parameters['checkpoint_dir']
-    agent_parameters['checkpoint_dir'] = os.path.join(checkpoint_dir, env.unwrapped.spec.id)
+    agent_parameters['checkpoint_dir'] = save_dir
     return agent_parameters
 
 def main():
     args = parse_arguments()
-    env = NormalizedActions(gym.make(args.env))
+    save_dir = os.path.join(args.save_dir, args.env, args.agent)
+    env = make_vec_env(args.env, n_envs=1)
+    env = VecNormalize(env, norm_obs=True, norm_reward=True, clip_obs=10.)
+    #  do not update them at test time
+    env.training = False
+    # reward normalization is not needed at test time
+    env.norm_reward = False
+
     if args.render:
         env.render('human')
 
@@ -49,7 +53,7 @@ def main():
 
     with open(agent_config_path) as f:
         agent_parameters = json.load(f)
-    agent_parameters = update_agent_parameters(agent_parameters, env)
+    agent_parameters = update_agent_parameters(agent_parameters, env, save_dir)
     agent.agent_init(agent_parameters)
 
     if args.load_latest:

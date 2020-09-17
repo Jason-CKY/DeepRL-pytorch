@@ -40,7 +40,6 @@ def main():
         env.render('human')
     done = False
     obs = env.reset()
-    x = nn.Flatten()
     action = model.predict(obs)
 
     if args.timesteps is None:

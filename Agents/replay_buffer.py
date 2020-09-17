@@ -17,6 +17,7 @@ class ReplayBuffer:
             minibatch_size (integer): The sample size.
             seed (integer): The seed for the random number generator. 
         """
+        size = int(size)
         self.buffer = deque(maxlen=size)
         self.minibatch_size = minibatch_size 
         self.seed = random.seed(seed)
@@ -64,4 +65,4 @@ class ReplayBuffer:
     def load(self, filename):
         with open(filename, 'rb') as f:
             self.buffer = pickle.load(f)
-        assert x.maxlen == self.max_size, "Attempted to load buffer with different max size"
+        assert self.buffer.maxlen == self.max_size, "Attempted to load buffer with different max size"

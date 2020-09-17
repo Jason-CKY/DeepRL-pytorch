@@ -48,7 +48,7 @@ class DDPG_Agent(BaseAgent):
 
         optim_config = agent_config['optimizer_config']
         self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=optim_config['actor_lr'])
-        self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=optim_config['critic_lr'], weight_decay=optim_config['weight_decay'])
+        self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=optim_config['critic_lr'])
         self.num_replay = agent_config['num_replay_updates_per_step']
         self.discount = agent_config['gamma']
         self.tau = agent_config['tau']
@@ -288,18 +288,20 @@ class DDPG_Agent(BaseAgent):
         latest_file = max(filepaths, key=os.path.getctime)
         return latest_file
         
-    def load_checkpoint(self, checkpoint_path=None):
+    def load_checkpoint(self, fname=None, load_buffer=False):
         """
         load networks and optimizer paramters from checkpoint_path
         if checkpoint_path is None, use the latest created path from checkpoint_dir
         Args:
             checkpoint_path: path to checkpoint
         """
-        if checkpoint_path is None:
-            checkpoint_path = self.get_latest_path()
+        if fname is None:
+            fname = self.get_latest_path()
 
+        checkpoint_path = os.path.join(self.checkpoint_dir, fname)
         if os.path.isfile(checkpoint_path):
-            self.replay_buffer.load(os.path.join(self.checkpoint_dir, "replay_buffer.pickle"))
+            if load_buffer:
+                self.replay_buffer.load(os.path.join(self.checkpoint_dir, "replay_buffer.pickle"))
             key = 'cuda' if torch.cuda.is_available() else 'cpu'
             checkpoint = torch.load(checkpoint_path, map_location=key)
             self.actor.load_state_dict(checkpoint['actor'])
