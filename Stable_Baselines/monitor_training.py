@@ -4,7 +4,7 @@ import gym
 import pybullet_envs
 import numpy as np
 import argparse
-from stable_baselines3 import DDPG
+
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.noise import NormalActionNoise
 from stable_baselines3.common.cmd_util import make_vec_env
@@ -35,12 +35,21 @@ def main():
 
     # Create action noise because TD3 and DDPG use a deterministic policy
     n_actions = env.action_space.shape[-1]
-    action_noise = NormalActionNoise(mean=np.zeros(n_actions), sigma=0.1 * np.ones(n_actions))
+    
     # Create the callback: check every 1000 steps
     callback = SaveOnBestTrainingRewardCallback(check_freq=1000, log_dir=log_dir)
     # Create RL model
     if args.agent == 'ddpg':
+        from stable_baselines3 import DDPG
+        action_noise = NormalActionNoise(mean=np.zeros(n_actions), sigma=0.1 * np.ones(n_actions))
         model = DDPG('MlpPolicy', env, action_noise=action_noise, verbose=0)
+    elif args.agent == 'td3':
+        from stable_baselines3 import TD3
+        action_noise = NormalActionNoise(mean=np.zeros(n_actions), sigma=0.1 * np.ones(n_actions))
+        model = TD3('MlpPolicy', env, action_noise=action_noise, verbose=0)
+    elif args.agent == 'ppo':
+        from stable_baselines3 import PPO
+        model = PPO('MlpPolicy', env, verbose=0)
 
     # Train the agent
     model.learn(total_timesteps=args.timesteps, callback=callback)

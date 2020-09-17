@@ -15,7 +15,7 @@ def moving_average(values, window):
     return np.convolve(values, weights, 'valid')
 
 
-def plot_results(log_folder, title='Learning Curve'):
+def plot_results(log_folder, title='Learning Curve', save_fig=False):
     """
     plot the results
 
@@ -33,17 +33,25 @@ def plot_results(log_folder, title='Learning Curve'):
     plt.ylabel('Rewards')
     plt.title(title + " Smoothed")
     plt.show()
+    if save_fig:
+        fig = plt.figure(title)
+        plt.plot(x, y)
+        plt.xlabel('Number of Timesteps')
+        plt.ylabel('Rewards')
+        plt.title(title + " Smoothed")
+        plt.savefig(os.path.join(log_folder, "learning_curve.png"))
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument('--log_dir', type=str, required=True, help='environment_id')
+    parser.add_argument('--save', action='store_true', help='if true, save the plot to log directory')
   
     return parser.parse_args()
 
 def main():
     # Create log dir
     args = parse_arguments()
-    plot_results(args.log_dir)
+    plot_results(args.log_dir, save_fig = args.save)
 
 if __name__ == '__main__':
     main()
