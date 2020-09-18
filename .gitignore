@@ -2,5 +2,7 @@ __pycache__
 .vscode
 testcode.py
 setup.bat
-Stable_Baselines/logs/*
 Model_Weights/*
+Stable_Baselines/logs/**/*.zip
+Stable_Baselines/logs/**/*.pkl
+Stable_Baselines/logs/**/*.csv

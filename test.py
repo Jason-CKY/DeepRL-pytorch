@@ -15,6 +15,7 @@ def parse_arguments():
     parser.add_argument('--agent', type=str, default='ddpg', help='specify type of agent (e.g. DDPG/TRPO/PPO/random)')
     parser.add_argument('--save_dir', type=str, default='Model_Weights', help='path to store training logs in .json format')
     parser.add_argument('--render', action='store_true', help='if true, display human renders of the environment')
+    parser.add_argument('--gif', action='store_true', help='if true, make gif of the trained agent')
     parser.add_argument('--load_latest', action='store_true', help='if true, load the latest saved model from the checkpoint directory')
     parser.add_argument('--load', type=str, help='specify load path')
     parser.add_argument('--timesteps', type=int, help='specify number of timesteps to train for')
