@@ -17,7 +17,7 @@ from stable_baselines3.common.evaluation import evaluate_policy
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--env', type=str, default='AntBulletEnv-v0', help='environment_id')
+    parser.add_argument('--env', type=str, default='HalfCheetahBulletEnv-v0', help='environment_id')
     parser.add_argument('--agent', type=str, default='ddpg', help='specify type of agent (e.g. DDPG/TRPO/PPO/random)')
     parser.add_argument('--save_dir', type=str, default='Model_Weights', help='path to store training logs in .json format')
     parser.add_argument('--resume', type=str, help='path to weights to resume training from')
@@ -54,7 +54,7 @@ def main():
 
     # -------- load checkpoint if any --------
     if args.resume is None:
-        starting_timestep = 1
+        starting_timestep = 0
     else:
         agent.load_checkpoint(args.resume)
         starting_timestep = int(args.resume.split(os.path.sep)[-1].split('.')[0].split('_')[-1])
@@ -101,7 +101,7 @@ def main():
         else:
             action = np.expand_dims(action, 0)
             state, reward, is_terminal, info = env.step(action)
-            action = agent.agent_step(reward.flatten(), state.flatten())       # flatten() to return the actual state from the vectorized state  
+            action = agent.agent_step(reward.flatten(), state.flatten(), exploration=timestep<=agent_parameters['start_steps'])       # flatten() to return the actual state from the vectorized state  
 
         if timestep%args.checkpoint_freq == 0 or timestep == args.timesteps:
             agent.save_checkpoint(timestep)

@@ -7,6 +7,8 @@ import torch.nn.functional as F
 import torch
 import numpy as np
 import os
+
+from copy import deepcopy
 from stable_baselines3.common.noise import NormalActionNoise
 class DDPG_Agent(BaseAgent):
     def __init__(self):
@@ -39,17 +41,20 @@ class DDPG_Agent(BaseAgent):
         agent_config['network_config']['action_dim'] = self.action_space.shape[-1]
         # define network
         self.actor = Actor(agent_config['network_config']).to(self.device)
-        self.actor_target = Actor(agent_config['network_config']).to(self.device)
-        self.actor_target.load_state_dict(self.actor.state_dict())
+        self.actor_target = deepcopy(self.actor).to(self.device)
+        # self.actor_target = Actor(agent_config['network_config']).to(self.device)
+        # self.actor_target.load_state_dict(self.actor.state_dict())
 
         self.critic = Critic(agent_config['network_config']).to(self.device)
-        self.critic_target = Critic(agent_config['network_config']).to(self.device)
-        self.critic_target.load_state_dict(self.critic.state_dict())
+        self.critic_target = deepcopy(self.critic).to(self.device)
+        # self.critic_target = Critic(agent_config['network_config']).to(self.device)
+        # self.critic_target.load_state_dict(self.critic.state_dict())
 
         optim_config = agent_config['optimizer_config']
         self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=optim_config['actor_lr'])
         self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=optim_config['critic_lr'])
         self.num_replay = agent_config['num_replay_updates_per_step']
+        self.update_after = agent_config['update_after']
         self.discount = agent_config['gamma']
         self.tau = agent_config['tau']
 
@@ -143,10 +148,7 @@ class DDPG_Agent(BaseAgent):
             else:
                 action += self.noise()
 
-        action = np.clip(action, -1, 1)                             # clip to tanh range [-1, 1]
-        action = (action + 1) / 2                                   # [-1, 1] => [0, 1] 
-        action *= (self.action_space.high - self.action_space.low)  # [0, 1] => [0, high-low] adjust range of outputs
-        action += self.action_space.low                             # [low, high]
+        action = np.clip(action*self.action_space.high, self.action_space.low, self.action_space.high)                             # clip to tanh range [-1, 1]
         return action
 
     def agent_start(self, state):
@@ -164,7 +166,7 @@ class DDPG_Agent(BaseAgent):
         self.last_action = self.policy(self.last_state)
         return self.last_action
 
-    def agent_step(self, reward, state):
+    def agent_step(self, reward, state, exploration=False):
         """A step taken by the agent.
         Args:
             reward (float): the reward received for taking the last action taken
@@ -178,13 +180,16 @@ class DDPG_Agent(BaseAgent):
         self.episode_steps += 1
 
         state = np.array(state)
-        action = self.policy(state)
+        if exploration:
+            action = self.action_space.sample()
+        else:
+            action = self.policy(state)
         
         # Append new experience to replay buffer
         self.replay_buffer.append(self.last_state, self.last_action, reward, 0, state)
         
         # Perform replay steps:
-        if self.replay_buffer.size() > self.replay_buffer.minibatch_size:
+        if self.replay_buffer.size() > self.update_after:
             for _ in range(self.num_replay):
                 # Get sample experiences from the replay buffer
                 experiences = self.replay_buffer.sample()     

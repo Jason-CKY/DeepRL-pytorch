@@ -10,10 +10,12 @@
     },
     "name": "DDPG",
     "replay_buffer_size": 1e6,
-    "minibatch_size": 100,
-    "num_replay_updates_per_step": 1,
+    "update_after": 1000,
+    "start_steps": 10000,
+    "minibatch_size": 64,
+    "num_replay_updates_per_step": 10,
     "gamma": 0.99,
-    "tau": 0.005,
+    "tau": 0.001,
     "noise": "Gaussian",
     "seed": 0
 }
