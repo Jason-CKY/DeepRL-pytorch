@@ -1,6 +1,0 @@
-{
-    "network_config": {},
-    "name": "random_policy",
-    "checkpoint_dir": "model_weights",
-    "seed": 0
-}

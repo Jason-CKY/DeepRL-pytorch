@@ -6,4 +6,4 @@ Model_Weights/*
 Stable_Baselines/logs/**/*.zip
 Stable_Baselines/logs/**/*.pkl
 Stable_Baselines/logs/**/*.csv
-Algorithms/Model_Weights
+Algorithms/ddpg/Model_Weights

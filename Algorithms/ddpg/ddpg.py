@@ -3,18 +3,18 @@ import pybullet_envs
 import torch
 import numpy as np
 import time
-import json
 import argparse
 import os
 
-from core import MLPActorCritic
-from replay_buffer import ReplayBuffer
-from logger import Logger
+from Algorithms.ddpg.core import MLPActorCritic
+# from core import MLPActorCritic
+from Algorithms.ddpg.replay_buffer import ReplayBuffer
+from Logger.logger import Logger
+# from logger import Logger
 from copy import deepcopy
 from torch.optim import Adam
 from tqdm import tqdm
 
-import matplotlib.pyplot as plt
 class DDPG:
     def __init__(self, env_fn, save_dir, actor_critic=MLPActorCritic, ac_kwargs=dict(), seed=0, 
          replay_size=int(1e6), gamma=0.99, 
@@ -268,9 +268,10 @@ class DDPG:
 
                         self.best_mean_reward = mean_reward
                         self.save_weights(best=True)
-
-                # if episode%self.save_freq==0:
-                #     self.save_weights(best=False)
+                    
+                    if self.best_mean_reward >= self.env.spec.reward_threshold:
+                        print("Solved Environment, stopping iteration...")
+                        return
 
                 self.test_agent()
                 self.logger.dump()
@@ -283,43 +284,6 @@ def parse_arguments():
     parser.add_argument('--seed', type=int, default=0, help='seed number for reproducibility')
     return parser.parse_args()
 
-def moving_average(values, window):
-    """
-    Smooth values by doing a moving average
-    :param values: (numpy array)
-    :param window: (int)
-    :return: (numpy array)
-    """
-    weights = np.repeat(1.0, window) / window
-    return np.convolve(values, weights, 'valid')
-
-
-def plot_results(log_folder, title='Learning Curve', save_fig=False):
-    """
-    plot the results
-
-    :param log_folder: (str) the save location of the results to plot
-    :param title: (str) the title of the task to plot
-    """
-    x, y = ts2xy(load_results(log_folder), 'timesteps')
-    y = moving_average(y, window=50)
-    # Truncate x
-    x = x[len(x) - len(y):]
-
-    fig = plt.figure(title)
-    plt.plot(x, y)
-    plt.xlabel('Number of Timesteps')
-    plt.ylabel('Rewards')
-    plt.title(title + " Smoothed")
-    plt.show()
-    if save_fig:
-        fig = plt.figure(title)
-        plt.plot(x, y)
-        plt.xlabel('Number of Timesteps')
-        plt.ylabel('Rewards')
-        plt.title(title + " Smoothed")
-        plt.savefig(os.path.join(log_folder, "learning_curve.png"))
-        
 def main():
     args = parse_arguments()
     save_dir = os.path.join("Model_Weights", args.env, "ddpg")
@@ -331,16 +295,6 @@ def main():
 
     model = DDPG(lambda: gym.make(args.env), save_dir, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
     model.learn(args.timesteps)
-    x, y = model.logger.load_results(["EpLen", "EpRet"])
-    y = moving_average(y, window=50)
-    # Truncate x
-    x = x[len(x) - len(y):]
-    fig = plt.figure(title)
-    plt.plot(x, y)
-    plt.xlabel('Number of Timesteps')
-    plt.ylabel('Rewards')
-    plt.title(title + " Smoothed")
-    plt.show()
 
 if __name__ == '__main__':
     main()
