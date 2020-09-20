@@ -49,7 +49,7 @@ class ReplayBuffer:
             state, action, reward, terminal, next_state = experience
             states.append(state)
             actions.append(action)
-            rewards.append(reward)
+            rewards.append([reward])
             terminals.append([terminal])
             next_states.append(next_state)
         

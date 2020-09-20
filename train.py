@@ -39,7 +39,7 @@ def main():
     # -------- set up environment and monitor logs --------
     save_dir = os.path.join(args.save_dir, args.env, args.agent)
     env = make_vec_env(args.env, n_envs=1, monitor_dir=save_dir)
-    env = VecNormalize(env, norm_obs=True, norm_reward=True, clip_obs=10.)
+    env = VecNormalize(env, norm_obs=True, norm_reward=True, clip_obs=10.).envs[0]
     # -------- set up agent --------
     if args.agent.lower() == 'ddpg':
         from Agents.DDPG.ddpg_agent import DDPG_Agent
@@ -61,10 +61,10 @@ def main():
 
 
     # -------- training loop --------
-    reward_threshold = env.envs[0].spec.reward_threshold
-    max_episode_steps = env.envs[0].spec.max_episode_steps
+    reward_threshold = env.spec.reward_threshold
+    max_episode_steps = env.spec.max_episode_steps
     is_terminal = False
-    last_state = env.reset().flatten()                 # flatten() to return the actual state from the vectorized state
+    last_state = env.reset()                 # flatten() to return the actual state from the vectorized state
     action = agent.agent_start(last_state)
     reward = 0.0
     episode_num = 1
@@ -95,13 +95,13 @@ def main():
                 break
 
             is_terminal = False
-            last_state = env.reset().flatten()         # flatten() to return the actual state from the vectorized state
+            last_state = env.reset()         # flatten() to return the actual state from the vectorized state
             action = agent.agent_start(last_state)
 
         else:
-            action = np.expand_dims(action, 0)
+            # action = np.expand_dims(action, 0)
             state, reward, is_terminal, info = env.step(action)
-            action = agent.agent_step(reward.flatten(), state.flatten(), exploration=timestep<=agent_parameters['start_steps'])       # flatten() to return the actual state from the vectorized state  
+            action = agent.agent_step(reward, state, exploration=timestep<=agent_parameters['start_steps'])       # flatten() to return the actual state from the vectorized state  
 
         if timestep%args.checkpoint_freq == 0 or timestep == args.timesteps:
             agent.save_checkpoint(timestep)
