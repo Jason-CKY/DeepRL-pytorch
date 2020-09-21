@@ -10,7 +10,7 @@ class Logger:
     Simplify the saving of diagnostics, hyperparameter configurations, and the 
     state of a training run. Saves the data in the form of a dictionary, and dumps them into a .json file
     """
-    def __init__(self, output_dir=None, output_fname='progress.json'):
+    def __init__(self, output_dir=None, output_fname='progress.pickle'):
         """
         Initialize a Logger.
         Args:

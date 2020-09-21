@@ -25,7 +25,7 @@ def parse_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument('--log_dir', type=str, default='Model_Weights\CartPoleContinuousBulletEnv-v0\ddpg', help='environment_id')
     parser.add_argument('--save', action='store_true', help='if true, save the plot to log directory')
-  
+    parser.add_argument('--compare', action='store_true', help='if true, plot the results alongside stable_baselines3 trained model')
     return parser.parse_args()
 
 def main():
@@ -42,17 +42,21 @@ def main():
     x = x[len(x) - len(y):]
     fig = plt.figure(title)
     plt.plot(x, y)
+    if args.compare:
+        log_dir = os.path.join("Stable_Baselines", "logs", os.path.sep.join(args.log_dir.split(os.path.sep)[1:]))
+        from stable_baselines3.common.results_plotter import load_results, ts2xy
+        x2, y2 = ts2xy(load_results(log_dir), 'timesteps')
+        y2 = moving_average(y2, window=50)
+        # Truncate x
+        x2 = x2[len(x2) - len(y2):]
+        plt.plot(x2, y2)
+        
     plt.xlabel('Number of Timesteps')
     plt.ylabel('Rewards')
     plt.title(title + " Smoothed")
-    plt.show()
     if args.save:
-        fig = plt.figure(title)
-        plt.plot(x, y)
-        plt.xlabel('Number of Timesteps')
-        plt.ylabel('Rewards')
-        plt.title(title + " Smoothed")
         plt.savefig(os.path.join(save_dir, "learning_curve.png"))
+    plt.show()
 
 if __name__ == '__main__':
     main()

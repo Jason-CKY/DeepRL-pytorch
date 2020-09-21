@@ -30,9 +30,10 @@ def main():
     os.makedirs(log_dir, exist_ok=True)
 
     # Create and wrap the environment
-    env = make_vec_env(args.env, n_envs=1, monitor_dir=log_dir)
-    env = VecNormalize(env, norm_obs=True, norm_reward=True, clip_obs=10.)
-
+    # env = make_vec_env(args.env, n_envs=1, monitor_dir=log_dir)
+    # env = VecNormalize(env, norm_obs=True, norm_reward=True, clip_obs=10.)
+    env = gym.make(args.env)
+    env = Monitor(env, log_dir)
     # Create action noise because TD3 and DDPG use a deterministic policy
     n_actions = env.action_space.shape[-1]
     
@@ -41,9 +42,10 @@ def main():
     # Create RL model
     if args.agent == 'ddpg':
         from stable_baselines3 import DDPG
+        policy_kwargs = dict(net_arch=[64, 64])
         action_noise = NormalActionNoise(mean=np.zeros(n_actions), sigma=0.1 * np.ones(n_actions))
-        model = DDPG('MlpPolicy', env, action_noise=action_noise, verbose=0)
-    elif args.agent == 'td3':
+        model = DDPG('MlpPolicy', env, action_noise=action_noise, policy_kwargs=policy_kwargs, verbose=0)
+    elif args.agent == 'td3':   
         from stable_baselines3 import TD3
         action_noise = NormalActionNoise(mean=np.zeros(n_actions), sigma=0.1 * np.ones(n_actions))
         model = TD3('MlpPolicy', env, action_noise=action_noise, verbose=0)

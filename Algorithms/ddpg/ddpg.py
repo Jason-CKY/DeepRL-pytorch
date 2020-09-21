@@ -5,12 +5,11 @@ import numpy as np
 import time
 import argparse
 import os
+import imageio
 
 from Algorithms.ddpg.core import MLPActorCritic
-# from core import MLPActorCritic
 from Algorithms.ddpg.replay_buffer import ReplayBuffer
 from Logger.logger import Logger
-# from logger import Logger
 from copy import deepcopy
 from torch.optim import Adam
 from tqdm import tqdm
@@ -159,7 +158,7 @@ class DDPG:
         action += noise_scale*np.random.randn(self.act_dim)
         return np.clip(action, -self.act_limit, self.act_limit)
 
-    def test_agent(self):
+    def evaluate_agent(self):
         for i in range(self.num_test_episodes):
             state, done, ep_ret, ep_len = self.test_env.reset(), False, 0, 0
             while not (done or (ep_len==self.max_ep_len)):
@@ -273,8 +272,51 @@ class DDPG:
                         print("Solved Environment, stopping iteration...")
                         return
 
-                self.test_agent()
+                self.evaluate_agent()
                 self.logger.dump()
+
+    def test(self, timesteps=None, render=False, record=False):
+        '''
+        Test the agent in the environment
+        Args:
+            render (bool): If true, render the image out for user to see in real time
+            record (bool): If true, save the recording into a .gif file at the end of episode
+        Return:
+            Ep_Ret (int): Total reward from the episode
+            Ep_Len (int): Total length of the episode in terms of timesteps
+        '''
+        if render:
+            self.test_env.render('human')
+        state, done, ep_ret, ep_len = self.test_env.reset(), False, 0, 0
+        img = []
+        if record:
+            img.append(self.test_env.render('rgb_array'))
+
+        if timesteps is not None:
+            for i in range(timesteps):
+                # Take deterministic action with 0 noise added
+                state, reward, done, _ = self.test_env.step(self.get_action(state, 0))
+                if record:
+                    img.append(self.test_env.render('rgb_array'))
+                else:
+                    self.test_env.render()
+                ep_ret += reward
+                ep_len += 1                
+        else:
+            while not (done or (ep_len==self.max_ep_len)):
+                # Take deterministic action with 0 noise added
+                state, reward, done, _ = self.test_env.step(self.get_action(state, 0))
+                if record:
+                    img.append(self.test_env.render('rgb_array'))
+                else:
+                    self.test_env.render()
+                ep_ret += reward
+                ep_len += 1
+
+        if record:
+            imageio.mimsave(f'{os.path.join(self.save_dir, "recording.gif")}', [np.array(img) for i, img in enumerate(img) if i%2 == 0], fps=29)
+
+        return ep_ret, ep_len      
 
 def parse_arguments():
     parser = argparse.ArgumentParser()

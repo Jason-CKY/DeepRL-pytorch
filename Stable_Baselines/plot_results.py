@@ -12,7 +12,6 @@ def moving_average(values, window):
     weights = np.repeat(1.0, window) / window
     return np.convolve(values, weights, 'valid')
 
-
 def plot_results(log_folder, title='Learning Curve', save_fig=False):
     """
     plot the results
@@ -42,7 +41,7 @@ def plot_results(log_folder, title='Learning Curve', save_fig=False):
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--log_dir', type=str, required=True, help='environment_id')
+    parser.add_argument('--log_dir', type=str, required=True, help='path to log directory')
     parser.add_argument('--save', action='store_true', help='if true, save the plot to log directory')
   
     return parser.parse_args()
