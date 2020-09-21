@@ -55,7 +55,6 @@ def main():
 
     # Train the agent
     model.learn(total_timesteps=args.timesteps, callback=callback)
-    env.save(os.path.join(args.log_dir, args.env, args.agent, "vec_normalize.pkl"))
 
 if __name__ == '__main__':
     main()

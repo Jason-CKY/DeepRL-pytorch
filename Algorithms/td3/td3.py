@@ -1,0 +1,342 @@
+import gym
+import pybullet_envs
+import torch
+import numpy as np
+import time
+import argparse
+import os
+import imageio
+
+from Algorithms.td3.core import MLPActorCritic
+from Algorithms.td3.replay_buffer import ReplayBuffer
+from Logger.logger import Logger
+from copy import deepcopy
+from torch.optim import Adam
+from tqdm import tqdm
+
+class TD3:
+    def __init__(self, env_fn, save_dir, actor_critic=MLPActorCritic, ac_kwargs=dict(), seed=0, 
+         replay_size=int(1e6), gamma=0.99, 
+         tau=0.995, pi_lr=1e-3, q_lr=1e-3, batch_size=100, start_steps=10000, 
+         update_after=1000, update_every=50, act_noise=0.1, num_test_episodes=10, 
+         max_ep_len=1000, logger_kwargs=dict(), save_freq=1):
+    
+        '''
+        Twin Delayed DDPG (TD3)
+        Args:
+            env_fn: function to create the gym environment
+            save_dir: path to save directory
+            actor_critic: Class for the actor-critic pytorch module
+            ac_kwargs (dict): any keyword argument for the actor_critic
+                        (1) hidden_sizes=(256, 256)
+                        (2) activation=nn.ReLU
+                        (3) device='cpu'
+            seed (int): seed for random generators
+            replay_size (int): Maximum length of replay buffer.
+            gamma (float): Discount factor. (Always between 0 and 1.)
+            tau (float): Interpolation factor in polyak averaging for target 
+                networks.
+            pi_lr (float): Learning rate for policy.
+            q_lr (float): Learning rate for Q-networks.
+            batch_size (int): Minibatch size for SGD.
+            start_steps (int): Number of steps for uniform-random action selection,
+                before running real policy. Helps exploration.
+            update_after (int): Number of env interactions to collect before
+                starting to do gradient descent updates. Ensures replay buffer
+                is full enough for useful updates.
+            update_every (int): Number of env interactions that should elapse
+                between gradient descent updates. Note: Regardless of how long 
+                you wait between updates, the ratio of env steps to gradient steps 
+                is locked to 1.
+            act_noise (float): Stddev for Gaussian exploration noise added to 
+                policy at training time. (At test time, no noise is added.)
+            num_test_episodes (int): Number of episodes to test the deterministic
+                policy at the end of each epoch.
+            max_ep_len (int): Maximum length of trajectory / episode / rollout.
+            --------------- logger_kwargs (dict): Keyword args for EpochLogger. ---------------------------
+            save_freq (int): How often (in terms of gap between episodes) to save
+                the current policy and value function.
+        '''
+        # logger stuff
+        self.logger = Logger(**logger_kwargs)
+
+        torch.manual_seed(seed)
+        np.random.seed(seed)
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.env, self.test_env = env_fn(), env_fn()
+
+        # Action Limit for clamping
+        self.act_limit = self.env.action_space.high[0]
+
+        # Create actor-critic module
+        self.ac = actor_critic(self.env.observation_space, self.env.action_space, device=self.device, **ac_kwargs)
+        self.ac_targ = deepcopy(self.ac)
+
+        # Freeze target networks with respect to optimizers
+        for p in self.ac_targ.parameters():
+            p.requires_grad = False
+        
+        # Experience buffer
+        self.replay_buffer = ReplayBuffer(int(replay_size))
+
+        # Set up optimizers for actor and critic
+        self.pi_optimizer = Adam(self.ac.pi.parameters(), lr=pi_lr)
+        self.q_optimizer = Adam(self.ac.q.parameters(), lr=q_lr)
+
+        self.gamma = gamma
+        self.tau = tau
+        self.act_noise = act_noise
+        self.obs_dim = self.env.observation_space.shape[0]
+        self.act_dim = self.env.action_space.shape[0]
+        self.num_test_episodes = num_test_episodes
+        self.max_ep_len = max_ep_len
+        self.start_steps = start_steps
+        self.update_after = update_after
+        self.update_every = update_every
+        self.batch_size = batch_size
+        self.save_freq = save_freq
+
+        self.best_mean_reward = -np.inf
+        self.save_dir = save_dir
+        
+    def update(self, experiences):
+        '''
+        Do gradient updates for actor-critic models
+        Args:
+            experiences: sampled s, a, r, s', terminals from replay buffer.
+        '''
+        # Get states, action, rewards, next_states, terminals from experiences
+        states, actions, rewards, next_states, terminals = experiences
+        states = states.to(self.device)
+        next_states = next_states.to(self.device)
+        actions = actions.to(self.device)
+        rewards = rewards.to(self.device)
+        terminals = terminals.to(self.device)
+
+        # --------------------- Optimizing critic ---------------------
+        self.q_optimizer.zero_grad()
+        # calculating q loss
+        Q_values = self.ac.q(states, actions)
+        with torch.no_grad():
+            next_actions = self.ac_targ.pi(next_states)
+            next_Q = self.ac_targ.q(next_states, next_actions) * (1-terminals)
+            Qprime = rewards + (self.gamma * next_Q)
+        
+        # MSE loss
+        loss_q = ((Q_values-Qprime)**2).mean()
+        loss_info = dict(Qvals=Q_values.detach().cpu().numpy())
+
+        loss_q.backward()
+        self.q_optimizer.step()
+
+        # --------------------- Optimizing actor ---------------------
+        # Freeze Q-network so no computational resources is wasted in computing gradients
+        for p in self.ac.q.parameters():
+            p.requires_grad = False
+
+        self.pi_optimizer.zero_grad()
+        loss_pi = -self.ac.q(states, self.ac.pi(states)).mean()
+        loss_pi.backward()
+        self.pi_optimizer.step()
+
+        # Unfreeze Q-network for next update step
+        for p in self.ac.q.parameters():
+            p.requires_grad = True
+            
+        # Record loss q and loss pi and qvals in the form of loss_info
+        self.logger.store(LossQ=loss_q.item(), LossPi=loss_pi.item(), **loss_info)
+
+        # update target networks
+        with torch.no_grad():
+            for p, p_targ in zip(self.ac.parameters(), self.ac_targ.parameters()):
+                p_targ.data.mul_(self.tau)
+                p_targ.data.add_((1-self.tau)*p.data)
+
+    def get_action(self, obs, noise_scale):
+        obs = torch.as_tensor(obs, dtype=torch.float32).to(self.device)
+        action = self.ac.act(obs)
+        action += noise_scale*np.random.randn(self.act_dim)
+        return np.clip(action, -self.act_limit, self.act_limit)
+
+    def evaluate_agent(self):
+        for i in range(self.num_test_episodes):
+            state, done, ep_ret, ep_len = self.test_env.reset(), False, 0, 0
+            while not (done or (ep_len==self.max_ep_len)):
+                # Take deterministic action with 0 noise added
+                state, reward, done, _ = self.test_env.step(self.get_action(state, 0))
+                ep_ret += reward
+                ep_len += 1
+            self.logger.store(TestEpRet=ep_ret, TestEpLen=ep_len)
+
+    def save_weights(self, best=True):
+        '''
+        save the pytorch model weights of ac and ac_targ
+        Args:
+
+        '''
+        if best:
+            fname = "best.pth"
+        else:
+            fname = "model_weights.pth"
+        print('saving checkpoint...')
+        checkpoint = {
+            'ac': self.ac.state_dict(),
+            'ac_target': self.ac_targ.state_dict(),
+            'pi_optimizer': self.pi_optimizer.state_dict(),
+            'q_optimizer': self.q_optimizer.state_dict()
+        }
+        torch.save(checkpoint, os.path.join(self.save_dir, fname))
+        self.replay_buffer.save(os.path.join(self.save_dir, "replay_buffer.pickle"))
+        print(f"checkpoint saved at {os.path.join(self.save_dir, fname)}")
+
+    def load_weights(self, best=True, load_buffer=True):
+        if best:
+            fname = "best.pth"
+        else:
+            fname = "model_weights.pth"
+        checkpoint_path = os.path.join(self.save_dir, fname)
+        if os.path.isfile(checkpoint_path):
+            if load_buffer:
+                self.replay_buffer.load(os.path.join(self.save_dir, "replay_buffer.pickle"))
+            key = 'cuda' if torch.cuda.is_available() else 'cpu'
+            checkpoint = torch.load(checkpoint_path, map_location=key)
+            self.ac.load_state_dict(checkpoint['ac'])
+            self.ac_targ.load_state_dict(checkpoint['ac_target'])
+            self.pi_optimizer.load_state_dict(checkpoint['pi_optimizer'])
+            self.q_optimizer.load_state_dict(checkpoint['q_optimizer'])
+
+            print('checkpoint loaded at {}'.format(checkpoint_path))
+        else:
+            raise OSError("Checkpoint file not found.")    
+
+    def learn(self, timesteps):
+        '''
+        Function to learn using TD3.
+        Args:
+            timesteps (int): number of timesteps to train for
+        '''
+        start_time = time.time()
+        state, ep_ret, ep_len = self.env.reset(), 0, 0
+        episode = 0
+        for timestep in tqdm(range(timesteps)):
+            # Until start_steps have elapsed, sample random actions from environment
+            # to encourage more exploration, sample from policy network after that
+            if timestep<=self.start_steps:
+                action = self.env.action_space.sample()
+            else:
+                action = self.get_action(state, self.act_noise)
+
+            # step the environment
+            next_state, reward, done, _ = self.env.step(action)
+            ep_ret += reward
+            ep_len += 1
+
+            # ignore the 'done' signal if it just times out after timestep>max_timesteps
+            done = False if ep_len==self.max_ep_len else done
+
+            # store experience to replay buffer
+            self.replay_buffer.append(state, action, reward, next_state, done)
+
+            # Critical step to update current state
+            state = next_state
+            
+            # Update handling
+            if timestep>=self.update_after and (timestep+1)%self.update_every==0:
+                for _ in range(self.update_every):
+                    experiences = self.replay_buffer.sample(self.batch_size)
+                    self.update(experiences)
+            
+            # End of trajectory/episode handling
+            if done or (ep_len==self.max_ep_len):
+                self.logger.store(EpRet=ep_ret, EpLen=ep_len)
+                # print(f"Episode reward: {ep_ret} | Episode Length: {ep_len}")
+                state, ep_ret, ep_len = self.env.reset(), 0, 0
+                episode += 1
+                # Retrieve training reward
+                x, y = self.logger.load_results(["EpLen", "EpRet"])
+                if len(x) > 0:
+                    # Mean training reward over the last 50 episodes
+                    mean_reward = np.mean(y[-50:])
+                    # print("Num timesteps: {}".format(timestep))
+                    # print("Best mean reward: {:.2f} - Last mean reward per episode: {:.2f}".format(self.best_mean_reward, mean_reward))
+
+                    # New best model
+                    if mean_reward > self.best_mean_reward:
+                        print("Num timesteps: {}".format(timestep))
+                        print("Best mean reward: {:.2f} - Last mean reward per episode: {:.2f}".format(self.best_mean_reward, mean_reward))
+
+                        self.best_mean_reward = mean_reward
+                        self.save_weights(best=True)
+                    
+                    if self.best_mean_reward >= self.env.spec.reward_threshold:
+                        print("Solved Environment, stopping iteration...")
+                        return
+
+                self.evaluate_agent()
+                self.logger.dump()
+
+    def test(self, timesteps=None, render=False, record=False):
+        '''
+        Test the agent in the environment
+        Args:
+            render (bool): If true, render the image out for user to see in real time
+            record (bool): If true, save the recording into a .gif file at the end of episode
+        Return:
+            Ep_Ret (int): Total reward from the episode
+            Ep_Len (int): Total length of the episode in terms of timesteps
+        '''
+        if render:
+            self.test_env.render('human')
+        state, done, ep_ret, ep_len = self.test_env.reset(), False, 0, 0
+        img = []
+        if record:
+            img.append(self.test_env.render('rgb_array'))
+
+        if timesteps is not None:
+            for i in range(timesteps):
+                # Take deterministic action with 0 noise added
+                state, reward, done, _ = self.test_env.step(self.get_action(state, 0))
+                if record:
+                    img.append(self.test_env.render('rgb_array'))
+                else:
+                    self.test_env.render()
+                ep_ret += reward
+                ep_len += 1                
+        else:
+            while not (done or (ep_len==self.max_ep_len)):
+                # Take deterministic action with 0 noise added
+                state, reward, done, _ = self.test_env.step(self.get_action(state, 0))
+                if record:
+                    img.append(self.test_env.render('rgb_array'))
+                else:
+                    self.test_env.render()
+                ep_ret += reward
+                ep_len += 1
+
+        if record:
+            imageio.mimsave(f'{os.path.join(self.save_dir, "recording.gif")}', [np.array(img) for i, img in enumerate(img) if i%2 == 0], fps=29)
+
+        return ep_ret, ep_len      
+
+def parse_arguments():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--env', type=str, default='CartPoleContinuousBulletEnv-v0', help='environment_id')
+    parser.add_argument('--config_path', type=str, default='td3_config.json', help='path to config.json')
+    parser.add_argument('--timesteps', type=int, required=True, help='specify number of timesteps to train for') 
+    parser.add_argument('--seed', type=int, default=0, help='seed number for reproducibility')
+    return parser.parse_args()
+
+def main():
+    args = parse_arguments()
+    save_dir = os.path.join("Model_Weights", args.env, "td3")
+    logger_kwargs = {
+        "output_dir": save_dir
+    }
+    with open(args.config_path) as f:
+        model_kwargs = json.load(f)
+
+    model = TD3(lambda: gym.make(args.env), save_dir, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
+    model.learn(args.timesteps)
+
+if __name__ == '__main__':
+    main()

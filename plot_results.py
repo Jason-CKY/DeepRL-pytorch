@@ -21,6 +21,13 @@ def cumulative_sum(x):
         output.append(x[:i+1].sum())
     return output
 
+def standardise_graph(x1, y1, x2, y2):
+    for count, i in enumerate(x2):
+        if i >= x1[-1]:
+            x2 = x2[:count]
+            y2 = y2[:count]
+    return x2, y2
+
 def parse_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument('--log_dir', type=str, default='Model_Weights\CartPoleContinuousBulletEnv-v0\ddpg', help='environment_id')
@@ -41,7 +48,7 @@ def main():
     # Truncate x
     x = x[len(x) - len(y):]
     fig = plt.figure(title)
-    plt.plot(x, y)
+    plt.plot(x, y, label="Own implementation")
     if args.compare:
         log_dir = os.path.join("Stable_Baselines", "logs", os.path.sep.join(args.log_dir.split(os.path.sep)[1:]))
         from stable_baselines3.common.results_plotter import load_results, ts2xy
@@ -49,13 +56,17 @@ def main():
         y2 = moving_average(y2, window=50)
         # Truncate x
         x2 = x2[len(x2) - len(y2):]
-        plt.plot(x2, y2)
-        
+        x2, y2 = standardise_graph(x, y, x2, y2)
+
+        plt.plot(x2, y2, label="Stable_Baselines3 implementation")
+    
+    plt.legend()
     plt.xlabel('Number of Timesteps')
     plt.ylabel('Rewards')
     plt.title(title + " Smoothed")
     if args.save:
-        plt.savefig(os.path.join(save_dir, "learning_curve.png"))
+        fname = "comparison.png" if args.compare else "learning_curve.png"
+        plt.savefig(os.path.join(save_dir, fname))
     plt.show()
 
 if __name__ == '__main__':

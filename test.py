@@ -23,9 +23,7 @@ def parse_arguments():
 def main():
     args = parse_arguments()
     if args.agent.lower() == 'ddpg':
-        # from Algorithms.ddpg.ddpg import main as main
         from Algorithms.ddpg.ddpg import DDPG
-        # main(args.env, args.config_path, args.timesteps, args.seed)  
         save_dir = os.path.join("Model_Weights", args.env, "ddpg")
         config_path = os.path.join(save_dir, "ddpg_config.json") 
         logger_kwargs = {
@@ -36,7 +34,7 @@ def main():
 
         model = DDPG(lambda: gym.make(args.env), save_dir, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
         model.load_weights(load_buffer=False)
-    model.test(render=args.render, record=args.gif)
+    model.test(render=args.render, record=args.gif, timesteps=args.timesteps)
 
 if __name__=='__main__':
     main()
