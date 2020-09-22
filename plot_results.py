@@ -30,7 +30,7 @@ def standardise_graph(x1, y1, x2, y2):
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--log_dir', type=str, default='Model_Weights\CartPoleContinuousBulletEnv-v0\ddpg', help='environment_id')
+    parser.add_argument('--log_dir', type=str, default='Model_Weights\CartPoleContinuousBulletEnv-v0\ddpg', help='path to log directory')
     parser.add_argument('--save', action='store_true', help='if true, save the plot to log directory')
     parser.add_argument('--compare', action='store_true', help='if true, plot the results alongside stable_baselines3 trained model')
     return parser.parse_args()

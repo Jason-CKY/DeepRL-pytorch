@@ -2,57 +2,72 @@
 
 This repo is an implementation of various deep RL algorithm on pybullet robotic environments.
 
-## Learning curves using Stable-Baselines3 agents on Pybullet Environments.
-
-### HalfCheetahBulletEnv-v0
-
-<table align='center'>
-<tr align='center'>
-<td> Algorithm </td>
-<td> Learning Curve </td>
-<td> Result </td>
-</tr>
-<tr>
-<td> DDPG </td>
-<td> <img src = 'Stable_Baselines\logs\HalfCheetahBulletEnv-v0\ddpg\learning_curve.png'> </td>
-<td> <img src = 'Stable_Baselines\logs\HalfCheetahBulletEnv-v0\ddpg\recording.gif'>  </td>
-</tr>
-<tr>
-<td> TD3 </td>
-<td> <img src = 'Stable_Baselines\logs\HalfCheetahBulletEnv-v0\td3\learning_curve.png'> </td>
-<td> <img src = 'Stable_Baselines\logs\HalfCheetahBulletEnv-v0\td3\recording.gif'>  </td>
-</tr>
-<tr>
-<td> PPO </td><td> <img src = 'Stable_Baselines\logs\HalfCheetahBulletEnv-v0\ppo\learning_curve.png'> </td>
-<td> <img src = 'Stable_Baselines\logs\HalfCheetahBulletEnv-v0\ppo\recording.gif'>  </td>
-</tr>
-</table>
-
-### AntBulletEnv-v0
+## Results comparing with Stable-Baselines3 agents
 
 <table>
     <thead>
         <tr>
-            <th>Layer 1</th>
-            <th>Layer 2</th>
-            <th>Layer 3</th>
+            <th>Environment</th>
+            <th> Algorithm </th>
+            <th> Learning Curve </th>
+            <th> Episode Recording </th>
         </tr>
     </thead>
     <tbody>
         <tr>
-            <td rowspan=4>L1 Name</td>
-            <td rowspan=2>L2 Name A</td>
-            <td>L3 Name A</td>
+            <td rowspan=2> AntBullet Env-v0 </td>
+            <td> DDPG </td>
+            <td><img src = 'Model_Weights\AntBulletEnv-v0\ddpg\comparison.png'></td>
+            <td><img src = 'Model_Weights\AntBulletEnv-v0\ddpg\recording.gif'></td>
         </tr>
         <tr>
-            <td>L3 Name B</td>
+            <td> TD3 </td>
+            <td> Placeholder </td>
+            <td> Placeholder </td>
         </tr>
         <tr>
-            <td rowspan=2>L2 Name B</td>
-            <td>L3 Name C</td>
+            <td rowspan=2> CartPole Continuous BulletEnv-v0 </td>
+            <td> DDPG </td>
+            <td> <img src = 'Model_Weights\CartPoleContinuousBulletEnv-v0\ddpg\comparison.png'> </td>
+            <td><img src = 'Model_Weights\CartPoleContinuousBulletEnv-v0\ddpg\recording.gif'> </td>
         </tr>
         <tr>
-            <td>L3 Name D</td>
+            <td> TD3 </td>
+            <td> Placeholder </td>
+            <td>Placeholder</td>
+        </tr>
+        <tr>
+            <td rowspan=2> HalfCheetah BulletEnv-v0 </td>
+            <td> DDPG </td>
+            <td> <img src = 'Model_Weights\HalfCheetahBulletEnv-v0\ddpg\comparison.png'> </td>
+            <td><img src = 'Model_Weights\HalfCheetahBulletEnv-v0\ddpg\recording.gif'></td>
+        </tr>
+        <tr>
+            <td> TD3 </td>
+            <td> Placeholder </td>
+            <td>Placeholder</td>
+        </tr>
+        <tr>
+            <td rowspan=2> Inverted Double Pendulum BulletEnv-v0 </td>
+            <td> DDPG </td>
+            <td> <img src = 'Model_Weights\InvertedDoublePendulumBulletEnv-v0\ddpg\comparison.png'> </td>
+            <td><img src = 'Model_Weights\InvertedDoublePendulumBulletEnv-v0\ddpg\recording.gif'></td>
+        </tr>
+        <tr>
+            <td> TD3 </td>
+            <td> Placeholder </td>
+            <td>Placeholder</td>
+        </tr>
+        <tr>
+            <td rowspan=2> Inverted Pendulum BulletEnv-v0 </td>
+            <td>DDPG</td>
+            <td> <img src = 'Model_Weights\InvertedPendulumBulletEnv-v0\ddpg\comparison.png'> </td>
+            <td><img src = 'Model_Weights\InvertedPendulumBulletEnv-v0\ddpg\recording.gif'></td>
+        </tr>
+        <tr>
+            <td>TD3</td>
+            <td> Placeholder </td>
+            <td>Placeholder</td>
         </tr>
     </tbody>
 </table>

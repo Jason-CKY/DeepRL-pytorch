@@ -19,8 +19,7 @@ class DDPG:
          replay_size=int(1e6), gamma=0.99, 
          tau=0.995, pi_lr=1e-3, q_lr=1e-3, batch_size=100, start_steps=10000, 
          update_after=1000, update_every=50, act_noise=0.1, num_test_episodes=10, 
-         max_ep_len=1000, logger_kwargs=dict(), save_freq=1):
-    
+         max_ep_len=1000, logger_kwargs=dict(), save_freq=1):    
         '''
         Deep Deterministic Policy Gradients (DDPG)
         Args:
@@ -53,7 +52,9 @@ class DDPG:
             num_test_episodes (int): Number of episodes to test the deterministic
                 policy at the end of each epoch.
             max_ep_len (int): Maximum length of trajectory / episode / rollout.
-            --------------- logger_kwargs (dict): Keyword args for EpochLogger. ---------------------------
+            logger_kwargs (dict): Keyword args for Logger. 
+                        (1) output_dir = None
+                        (2) output_fname = 'progress.pickle'
             save_freq (int): How often (in terms of gap between episodes) to save
                 the current policy and value function.
         '''
@@ -153,12 +154,26 @@ class DDPG:
                 p_targ.data.add_((1-self.tau)*p.data)
 
     def get_action(self, obs, noise_scale):
+        '''
+        Input the current observation into the actor network to calculate action to take.
+        Args:
+            obs (numpy ndarray): Current state of the environment
+            noise_scale (float): Stddev for Gaussian exploration noise
+        Return:
+            Action (numpy ndarray): Scaled action that is clipped to environment's action limits
+        '''
         obs = torch.as_tensor(obs, dtype=torch.float32).to(self.device)
         action = self.ac.act(obs)
         action += noise_scale*np.random.randn(self.act_dim)
         return np.clip(action, -self.act_limit, self.act_limit)
 
     def evaluate_agent(self):
+        '''
+        Run the current model through test environment for <self.num_test_episodes> episodes
+        without noise exploration, and store the episode return and length into the logger.
+        
+        Used to measure how well the agent is doing.
+        '''
         for i in range(self.num_test_episodes):
             state, done, ep_ret, ep_len = self.test_env.reset(), False, 0, 0
             while not (done or (ep_len==self.max_ep_len)):
@@ -190,6 +205,12 @@ class DDPG:
         print(f"checkpoint saved at {os.path.join(self.save_dir, fname)}")
 
     def load_weights(self, best=True, load_buffer=True):
+        '''
+        Load the model weights and replay buffer from self.save_dir
+        Args:
+            best (bool): If True, save from the weights file with the best mean episode reward
+            load_buffer (bool): If True, load the replay buffer from the pickled file
+        '''
         if best:
             fname = "best.pth"
         else:
@@ -281,6 +302,7 @@ class DDPG:
         Args:
             render (bool): If true, render the image out for user to see in real time
             record (bool): If true, save the recording into a .gif file at the end of episode
+            timesteps (int): number of timesteps to run the environment for. Default None will run to completion
         Return:
             Ep_Ret (int): Total reward from the episode
             Ep_Len (int): Total length of the episode in terms of timesteps

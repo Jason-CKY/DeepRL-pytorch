@@ -51,12 +51,14 @@ class Logger:
         with open(self.output_filepath, 'wb') as f:
             pickle.dump(self.logger_dict, f)
 
-    def load_results(self, args):
+    def load_results(self, keys):
         '''
         return all the stored variables in the .json file
+        Args:
+            keys (list): list of keys to extract from logger
         '''
         output = []
-        for key in args:
+        for key in keys:
             assert key in self.logger_dict.keys(), "Attempted to get variables that are not stored in this .json file"
             output.append(self.logger_dict[key])
         return output
