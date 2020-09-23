@@ -13,16 +13,23 @@ from Logger.logger import Logger
 from copy import deepcopy
 from torch.optim import Adam
 from tqdm import tqdm
+from itertools import chain
 
 class TD3:
     def __init__(self, env_fn, save_dir, actor_critic=MLPActorCritic, ac_kwargs=dict(), seed=0, 
          replay_size=int(1e6), gamma=0.99, 
          tau=0.995, pi_lr=1e-3, q_lr=1e-3, batch_size=100, start_steps=10000, 
          update_after=1000, update_every=50, act_noise=0.1, num_test_episodes=10, 
-         max_ep_len=1000, logger_kwargs=dict(), save_freq=1):
-    
+         max_ep_len=1000, logger_kwargs=dict(), save_freq=1, policy_delay=2):    
         '''
-        Twin Delayed DDPG (TD3)
+        Twin Delayed Deep Deterministic Policy Gradients (TD3):
+        An Extension of DDPG but with 3 tricks added:
+            (1) Clipped Double Q-Learning: TD3 learns two Q-functions instead of one (hence “twin”),
+                and uses the smaller of the two Q-values to form the targets in the Bellman error loss functions
+            (2) “Delayed” Policy Updates. TD3 updates the policy (and target networks) less frequently 
+                than the Q-function. The paper recommends one policy update for every two Q-function updates.
+            (3) Target Policy Smoothing. TD3 adds noise to the target action, to make it harder for the policy
+                to exploit Q-function errors by smoothing out Q along changes in action.
         Args:
             env_fn: function to create the gym environment
             save_dir: path to save directory
@@ -53,9 +60,13 @@ class TD3:
             num_test_episodes (int): Number of episodes to test the deterministic
                 policy at the end of each epoch.
             max_ep_len (int): Maximum length of trajectory / episode / rollout.
-            --------------- logger_kwargs (dict): Keyword args for EpochLogger. ---------------------------
+            logger_kwargs (dict): Keyword args for Logger. 
+                        (1) output_dir = None
+                        (2) output_fname = 'progress.pickle'
             save_freq (int): How often (in terms of gap between episodes) to save
-                the current policy and value function.
+                    the current policy and value function.
+            policy_delay (int): Policy will only be updated once every 
+                                policy_delay times for each update of the Q-networks.
         '''
         # logger stuff
         self.logger = Logger(**logger_kwargs)
@@ -81,7 +92,7 @@ class TD3:
 
         # Set up optimizers for actor and critic
         self.pi_optimizer = Adam(self.ac.pi.parameters(), lr=pi_lr)
-        self.q_optimizer = Adam(self.ac.q.parameters(), lr=q_lr)
+        self.q_optimizer = Adam(chain(self.ac.q1.parameters(), self.ac.q2.parameters()), lr=q_lr)
 
         self.gamma = gamma
         self.tau = tau
@@ -95,15 +106,17 @@ class TD3:
         self.update_every = update_every
         self.batch_size = batch_size
         self.save_freq = save_freq
+        self.policy_delay = policy_delay
 
         self.best_mean_reward = -np.inf
         self.save_dir = save_dir
         
-    def update(self, experiences):
+    def update(self, experiences, update_policy=False):
         '''
         Do gradient updates for actor-critic models
         Args:
             experiences: sampled s, a, r, s', terminals from replay buffer.
+            update_policy (bool): If True, update the actor network
         '''
         # Get states, action, rewards, next_states, terminals from experiences
         states, actions, rewards, next_states, terminals = experiences
@@ -116,49 +129,76 @@ class TD3:
         # --------------------- Optimizing critic ---------------------
         self.q_optimizer.zero_grad()
         # calculating q loss
-        Q_values = self.ac.q(states, actions)
+        q1 = self.ac.q1(states, actions)
+        q2 = self.ac.q2(states, actions)
+
         with torch.no_grad():
+            # Trick 3: Target Policy Smoothing
             next_actions = self.ac_targ.pi(next_states)
-            next_Q = self.ac_targ.q(next_states, next_actions) * (1-terminals)
+            epsilon_noise = torch.randn_like(next_actions) * self.act_noise
+            next_actions = torch.clamp(next_actions + epsilon_noise, -self.act_limit, self.act_limit)
+
+            # Minimum target next_Q value
+            next_q1 = self.ac_targ.q1(next_states, next_actions)
+            next_q2 = self.ac_targ.q2(next_states, next_actions)
+            next_Q = torch.min(next_q1, next_q2) * (1-terminals)
             Qprime = rewards + (self.gamma * next_Q)
         
         # MSE loss
-        loss_q = ((Q_values-Qprime)**2).mean()
-        loss_info = dict(Qvals=Q_values.detach().cpu().numpy())
+        loss_q = ((q1-Qprime)**2).mean() + ((q2-Qprime)**2).mean()
+        loss_info = dict(Q1vals=q1.detach().cpu().numpy(),
+                        Q2Vals=q2,detach().cpu().numpy())
 
         loss_q.backward()
         self.q_optimizer.step()
-
-        # --------------------- Optimizing actor ---------------------
-        # Freeze Q-network so no computational resources is wasted in computing gradients
-        for p in self.ac.q.parameters():
-            p.requires_grad = False
-
-        self.pi_optimizer.zero_grad()
-        loss_pi = -self.ac.q(states, self.ac.pi(states)).mean()
-        loss_pi.backward()
-        self.pi_optimizer.step()
-
-        # Unfreeze Q-network for next update step
-        for p in self.ac.q.parameters():
-            p.requires_grad = True
-            
         # Record loss q and loss pi and qvals in the form of loss_info
-        self.logger.store(LossQ=loss_q.item(), LossPi=loss_pi.item(), **loss_info)
+        self.logger.store(LossQ=loss_q.item(), **loss_info)
 
-        # update target networks
-        with torch.no_grad():
-            for p, p_targ in zip(self.ac.parameters(), self.ac_targ.parameters()):
-                p_targ.data.mul_(self.tau)
-                p_targ.data.add_((1-self.tau)*p.data)
+        if update_policy:
+            # --------------------- Optimizing actor ---------------------
+            # Freeze Q-network so no computational resources is wasted in computing gradients
+            for p in chain(self.ac.q1.parameters(), self.ac.q2.parameters()):
+                p.requires_grad = False
+
+            self.pi_optimizer.zero_grad()
+            loss_pi = -self.ac.q1(states, self.ac.pi(states)).mean()
+            loss_pi.backward()
+            self.pi_optimizer.step()
+
+            # Unfreeze Q-network for next update step
+            for p in chain(self.ac.q1.parameters(), self.ac.q2.parameters()):
+                p.requires_grad = True
+                
+            # Record loss q and loss pi and qvals in the form of loss_info
+            self.logger.store(LossPi=loss_pi.item())
+
+            # update target networks
+            with torch.no_grad():
+                for p, p_targ in zip(self.ac.parameters(), self.ac_targ.parameters()):
+                    p_targ.data.mul_(self.tau)
+                    p_targ.data.add_((1-self.tau)*p.data)
 
     def get_action(self, obs, noise_scale):
+        '''
+        Input the current observation into the actor network to calculate action to take.
+        Args:
+            obs (numpy ndarray): Current state of the environment
+            noise_scale (float): Stddev for Gaussian exploration noise
+        Return:
+            Action (numpy ndarray): Scaled action that is clipped to environment's action limits
+        '''
         obs = torch.as_tensor(obs, dtype=torch.float32).to(self.device)
         action = self.ac.act(obs)
         action += noise_scale*np.random.randn(self.act_dim)
         return np.clip(action, -self.act_limit, self.act_limit)
 
     def evaluate_agent(self):
+        '''
+        Run the current model through test environment for <self.num_test_episodes> episodes
+        without noise exploration, and store the episode return and length into the logger.
+        
+        Used to measure how well the agent is doing.
+        '''
         for i in range(self.num_test_episodes):
             state, done, ep_ret, ep_len = self.test_env.reset(), False, 0, 0
             while not (done or (ep_len==self.max_ep_len)):
@@ -190,6 +230,12 @@ class TD3:
         print(f"checkpoint saved at {os.path.join(self.save_dir, fname)}")
 
     def load_weights(self, best=True, load_buffer=True):
+        '''
+        Load the model weights and replay buffer from self.save_dir
+        Args:
+            best (bool): If True, save from the weights file with the best mean episode reward
+            load_buffer (bool): If True, load the replay buffer from the pickled file
+        '''
         if best:
             fname = "best.pth"
         else:
@@ -242,9 +288,10 @@ class TD3:
             
             # Update handling
             if timestep>=self.update_after and (timestep+1)%self.update_every==0:
-                for _ in range(self.update_every):
+                for j in range(self.update_every):
+                    update_policy = True if j%self.policy_delay==0 else False
                     experiences = self.replay_buffer.sample(self.batch_size)
-                    self.update(experiences)
+                    self.update(experiences, update_policy=update_policy)
             
             # End of trajectory/episode handling
             if done or (ep_len==self.max_ep_len):
@@ -281,6 +328,7 @@ class TD3:
         Args:
             render (bool): If true, render the image out for user to see in real time
             record (bool): If true, save the recording into a .gif file at the end of episode
+            timesteps (int): number of timesteps to run the environment for. Default None will run to completion
         Return:
             Ep_Ret (int): Total reward from the episode
             Ep_Len (int): Total length of the episode in terms of timesteps
