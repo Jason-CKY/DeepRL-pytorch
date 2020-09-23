@@ -28,13 +28,26 @@ def main():
         logger_kwargs = {
             "output_dir": save_dir
         }
-        with open(config_path) as f:
+        with open(config_path, 'r') as f:
             model_kwargs = json.load(f)
 
         model = DDPG(lambda: gym.make(args.env), save_dir, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
         with open(os.path.join(save_dir, "ddpg_config.json"), "w") as f:
             f.write(json.dumps(logger_kwargs, indent=4))
-        model.learn(args.timesteps) 
+    elif args.agent.lower() == 'td3':
+        from Algorithms.td3.td3 import TD3
+        config_path = os.path.join("Algorithms", "td3", "td3_config.json")
+        save_dir = os.path.join("Model_Weights", args.env, "td3")
+        logger_kwargs = {
+            "output_dir": save_dir
+        }
+        with open(config_path, 'r') as f:
+            model_kwargs = json.load(f)
+        model = TD3(lambda: gym.make(args.env), save_dir, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
+        with open(os.path.join(save_dir, "td3_config.json"), "w") as f:
+            f.write(json.dumps(logger_kwargs, indent=4))        
+
+    model.learn(args.timesteps) 
 
 if __name__=='__main__':
     main()
