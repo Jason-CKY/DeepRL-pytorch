@@ -33,7 +33,7 @@ def main():
 
         model = DDPG(lambda: gym.make(args.env), save_dir, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
         with open(os.path.join(save_dir, "ddpg_config.json"), "w") as f:
-            f.write(json.dumps(logger_kwargs, indent=4))
+            f.write(json.dumps(model_kwargs, indent=4))
     elif args.agent.lower() == 'td3':
         from Algorithms.td3.td3 import TD3
         config_path = os.path.join("Algorithms", "td3", "td3_config.json")
@@ -45,7 +45,7 @@ def main():
             model_kwargs = json.load(f)
         model = TD3(lambda: gym.make(args.env), save_dir, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
         with open(os.path.join(save_dir, "td3_config.json"), "w") as f:
-            f.write(json.dumps(logger_kwargs, indent=4))        
+            f.write(json.dumps(model_kwargs, indent=4))        
 
     model.learn(args.timesteps) 
 

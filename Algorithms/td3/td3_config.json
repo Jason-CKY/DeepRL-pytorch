@@ -13,5 +13,6 @@
     "update_every": 50,
     "act_noise": 0.1,
     "max_ep_len": 1000,
-    "save_freq": 1
+    "save_freq": 1,
+    "policy_delay": 2
 }

@@ -78,11 +78,24 @@ def main():
         logger_kwargs = {
             "output_dir": save_dir
         }
-        with open(config_path) as f:
+        with open(config_path, 'r') as f:
             model_kwargs = json.load(f)
 
         model = DDPG(lambda: gym.make(args.env), save_dir, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
         model.load_weights(load_buffer=False)
+    elif args.agent.lower() == 'td3':
+        from Algorithms.td3.td3 import TD3
+        save_dir = os.path.join("Model_Weights", args.env, "td3")
+        config_path = os.path.join(save_dir, "td3_config.json") 
+        logger_kwargs = {
+            "output_dir": save_dir
+        }
+        with open(config_path, 'r') as f:
+            model_kwargs = json.load(f)
+
+        model = TD3(lambda: gym.make(args.env), save_dir, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
+        model.load_weights(load_buffer=False)
+
     ep_ret, ep_len = model.test(render=args.render, record=args.gif, timesteps=args.timesteps)
     print(f"Episode Return: {ep_ret}\nEpisode Length: {ep_len}")
 

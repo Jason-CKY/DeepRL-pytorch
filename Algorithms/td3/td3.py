@@ -289,6 +289,7 @@ class TD3:
             # Update handling
             if timestep>=self.update_after and (timestep+1)%self.update_every==0:
                 for j in range(self.update_every):
+                    # Trick 2: “Delayed” Policy Updates.
                     update_policy = True if j%self.policy_delay==0 else False
                     experiences = self.replay_buffer.sample(self.batch_size)
                     self.update(experiences, update_policy=update_policy)
