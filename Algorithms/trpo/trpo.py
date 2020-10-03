@@ -7,18 +7,18 @@ import argparse
 import os
 import imageio
 
-from core import MLPActorCritic
-from gae_buffer import GAEBuffer
-# from Algorithms.trpo.core import MLPActorCritic
-# from Algorithms.trpo.gae_buffer import GAEBuffer
-# from Logger.logger import Logger
+# from core import MLPActorCritic
+# from gae_buffer import GAEBuffer
+from Algorithms.trpo.core import MLPActorCritic
+from Algorithms.trpo.gae_buffer import GAEBuffer
+from Logger.logger import Logger
 from copy import deepcopy
 from torch import optim
 from tqdm import tqdm
 
 class TRPO:
     
-    def __init__(self, env_fn, actor_critic=MLPActorCritic, ac_kwargs=dict(), seed=0, 
+    def __init__(self, env_fn, save_dir, actor_critic=MLPActorCritic, ac_kwargs=dict(), seed=0, 
          steps_per_epoch=400, gamma=0.99, delta=0.01, vf_lr=1e-3,
          train_v_iters=80, damping_coeff=0.1, cg_iters=10, backtrack_iters=10, 
          backtrack_coeff=0.8, lam=0.97, max_ep_len=1000, logger_kwargs=dict(), 
@@ -29,6 +29,7 @@ class TRPO:
         Args:
             env_fn : A function which creates a copy of the environment.
                 The environment must satisfy the OpenAI Gym API.
+            save_dir: path to save directory
             actor_critic: Class for the actor-critic pytorch module
             ac_kwargs (dict): Any kwargs appropriate for the actor_critic 
                 function you provided to TRPO.
@@ -70,13 +71,12 @@ class TRPO:
                 almost the same.
         """
         # logger stuff
-        # self.logger = Logger(**logger_kwargs)
+        self.logger = Logger(**logger_kwargs)
 
         torch.manual_seed(seed)
         np.random.seed(seed)
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.device="cpu"
-        self.env = env_fn()
+        self.env, self.test_env = env_fn(), env_fn()
         self.vf_lr = vf_lr
         self.steps_per_epoch = steps_per_epoch
         # self.epochs = epochs
@@ -102,6 +102,9 @@ class TRPO:
         self.backtrack_coeff = backtrack_coeff
         self.algo = algo
         self.backtrack_iters = backtrack_iters
+        self.best_mean_reward = -np.inf
+        self.save_dir = save_dir
+        self.save_freq = save_freq
 
     def flat_grad(self, grads, hessian=False):
         grad_flatten = []
@@ -116,7 +119,7 @@ class TRPO:
             grad_flatten = torch.cat(grad_flatten).data
             return grad_flatten
 
-    def cg(self, obs, b, act, EPS=1e-8, residual_tol=1e-10):
+    def cg(self, obs, b, EPS=1e-8, residual_tol=1e-10):
         # Conjugate gradient algorithm
         # (https://en.wikipedia.org/wiki/Conjugate_gradient_method)
         x = torch.zeros(b.size()).to(self.device)
@@ -139,7 +142,6 @@ class TRPO:
                 break
 
         return x
-
 
     def hessian_vector_product(self, obs, p):
         p = p.detach()
@@ -168,18 +170,6 @@ class TRPO:
             params.data.copy_(new_param)
             index += params_length
 
-    def get_action(self, obs):
-        '''
-        Input the current observation into the actor network to calculate action to take.
-        Args:
-            obs (numpy ndarray): Current state of the environment
-        Return:
-            Action (numpy ndarray): Scaled action that is clipped to environment's action limits
-        '''
-        obs = torch.as_tensor(obs, dtype=torch.float32).to(self.device)
-        action = self.ac.act(obs)
-        return action.detach().cpu().numpy()
-
     def update(self):
         data = self.buffer.get()
         obs = data['obs']
@@ -200,8 +190,8 @@ class TRPO:
         gradient = self.flat_grad(gradient)
 
         # Core calculations for NPG/TRPO
-        search_dir = self.cg(obs, gradient.data, act)    # H^-1 g
-        gHg = (self.hessian_vector_product(obs, search_dir, act) * search_dir).sum(0)
+        search_dir = self.cg(obs, gradient.data)    # H^-1 g
+        gHg = (self.hessian_vector_product(obs, search_dir) * search_dir).sum(0)
         step_size = torch.sqrt(2 * self.delta / gHg)
         old_params = self.flat_params(self.ac.pi)
         # update the old model, calculate KL divergence then decide whether to update new model
@@ -213,15 +203,11 @@ class TRPO:
 
             kl = self.ac.pi.calculate_kl(new_policy=self.ac.pi, old_policy=self.ac.pi_old, obs=obs)
         elif self.algo == 'trpo':
-            # expected_improve = (gradient * step_size * search_dir).sum(0, keepdim=True)
-
             for i in range(self.backtrack_iters):
                 # Backtracking line search
                 # (https://web.stanford.edu/~boyd/cvxbook/bv_cvxbook.pdf) 464p.
                 params = old_params + (self.backtrack_coeff**(i+1)) * step_size * search_dir
-                # params = old_params + self.backtrack_coeff * step_size * search_dir
                 self.update_model(self.ac.pi, params)
-
 
                 # Prediction logπ_old(s), logπ(s)
                 _, logp = self.ac.pi(obs, act)
@@ -231,11 +217,9 @@ class TRPO:
                 surrogate_adv = (ratio*adv).mean()
 
                 improve = surrogate_adv - surrogate_adv_old
-                # expected_improve *= self.backtrack_coeff
-                # improve_condition = loss_improve / expected_improve
-
                 kl = self.ac.pi.calculate_kl(new_policy=self.ac.pi, old_policy=self.ac.pi_old, obs=obs)
                 
+                # print(f"kl: {kl}")
                 if kl <= self.delta and improve>0:
                     print('Accepting new params at step %d of line search.'%i)
                     # self.backtrack_iters.append(i)
@@ -250,9 +234,6 @@ class TRPO:
                     params = self.flat_params(self.ac.pi_old)
                     self.update_model(self.ac.pi, params)
 
-                # self.backtrack_coeff *= 0.5
-
-
         # Update Critic
         for _ in range(self.train_v_iters):
             self.v_optimizer.zero_grad()
@@ -261,6 +242,44 @@ class TRPO:
             v_loss.backward()
             self.v_optimizer.step()
 
+    def save_weights(self, best=True):
+        '''
+        save the pytorch model weights of critic and actor networks
+        '''
+        if best:
+            fname = "best.pth"
+        else:
+            fname = "model_weights.pth"
+        print('saving checkpoint...')
+        checkpoint = {
+            'v': self.ac.v.state_dict(),
+            'pi': self.ac.pi.state_dict(),
+            'v_optimizer': self.v_optimizer.state_dict()
+        }
+        torch.save(checkpoint, os.path.join(self.save_dir, fname))
+        print(f"checkpoint saved at {os.path.join(self.save_dir, fname)}")
+
+    def load_weights(self, best=True):
+        '''
+        Load the model weights and replay buffer from self.save_dir
+        Args:
+            best (bool): If True, save from the weights file with the best mean episode reward
+        '''
+        if best:
+            fname = "best.pth"
+        else:
+            fname = "model_weights.pth"
+        checkpoint_path = os.path.join(self.save_dir, fname)
+        if os.path.isfile(checkpoint_path):
+            key = 'cuda' if torch.cuda.is_available() else 'cpu'
+            checkpoint = torch.load(checkpoint_path, map_location=key)
+            self.ac.v.load_state_dict(checkpoint['v'])
+            self.ac.pi.load_state_dict(checkpoint['pi'])
+            self.v_optimizer.load_state_dict(checkpoint['v_optimizer'])
+
+            print('checkpoint loaded at {}'.format(checkpoint_path))
+        else:
+            raise OSError("Checkpoint file not found.")    
 
     def learn(self, timesteps):
         ep_rets = []
@@ -291,17 +310,74 @@ class TRPO:
                         _, v, _ = self.ac.step(torch.as_tensor(obs, dtype=torch.float32).to(self.device))
                     else:
                         v = 0
-                    
-                    # print(f"Episode return: {ep_ret}")
-                    ep_rets.append(ep_ret)
+
+                    self.logger.store(EpRet=ep_ret, EpLen=ep_len)
                     self.buffer.finish_path(v)
-                    # if terminal:
-                    #     # only save EpRet / EpLen if trajectory finished
-                    #     logger.store(EpRet=ep_ret, EpLen=ep_len)
-                    state, ep_ret, ep_len = self.env.reset(), 0, 0
+                    obs, ep_ret, ep_len = self.env.reset(), 0, 0
+                    # Retrieve training reward
+                    x, y = self.logger.load_results(["EpLen", "EpRet"])
+                    if len(x) > 0:
+                        # Mean training reward over the last 50 episodes
+                        mean_reward = np.mean(y[-50:])
 
-            # self.buffer.get()
+                        # New best model
+                        if mean_reward > self.best_mean_reward:
+                            # print("Num timesteps: {}".format(timestep))
+                            print("Best mean reward: {:.2f} - Last mean reward per episode: {:.2f}".format(self.best_mean_reward, mean_reward))
+
+                            self.best_mean_reward = mean_reward
+                            self.save_weights(best=True)
+                        
+                        if self.best_mean_reward >= self.env.spec.reward_threshold:
+                            print("Solved Environment, stopping iteration...")
+                            return
+
             # update value function and TRPO policy update
-            print("average return: " + str(np.array(ep_rets[-10:]).mean()))
             self.update()
+            self.logger.dump()
 
+    def test(self, timesteps=None, render=False, record=False):
+        '''
+        Test the agent in the environment
+        Args:
+            render (bool): If true, render the image out for user to see in real time
+            record (bool): If true, save the recording into a .gif file at the end of episode
+            timesteps (int): number of timesteps to run the environment for. Default None will run to completion
+        Return:
+            Ep_Ret (int): Total reward from the episode
+            Ep_Len (int): Total length of the episode in terms of timesteps
+        '''
+        if render:
+            self.test_env.render('human')
+        obs, done, ep_ret, ep_len = self.test_env.reset(), False, 0, 0
+        img = []
+        if record:
+            img.append(self.test_env.render('rgb_array'))
+
+        if timesteps is not None:
+            for i in range(timesteps):
+                # Take stochastic action with policy network
+                action, _, _ = self.ac.step(torch.as_tensor(obs, dtype=torch.float32).to(self.device))
+                obs, reward, done, _ = self.test_env.step(action)
+                if record:
+                    img.append(self.test_env.render('rgb_array'))
+                else:
+                    self.test_env.render()
+                ep_ret += reward
+                ep_len += 1                
+        else:
+            while not (done or (ep_len==self.max_ep_len)):
+                # Take stochastic action with policy network
+                action, _, _ = self.ac.step(torch.as_tensor(obs, dtype=torch.float32).to(self.device))
+                obs, reward, done, _ = self.test_env.step(action)
+                if record:
+                    img.append(self.test_env.render('rgb_array'))
+                else:
+                    self.test_env.render()
+                ep_ret += reward
+                ep_len += 1
+
+        if record:
+            imageio.mimsave(f'{os.path.join(self.save_dir, "recording.gif")}', [np.array(img) for i, img in enumerate(img) if i%2 == 0], fps=29)
+
+        return ep_ret, ep_len      

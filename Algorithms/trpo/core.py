@@ -82,7 +82,7 @@ class MLPCategoricalActor(Actor):
         '''
         super().__init__()
         self.logits_net = mlp([obs_dim] + list(hidden_sizes) + [act_dim], activation)
-    
+
     def _distribution(self, obs):
         logits = self.logits_net(obs)
         return Categorical(logits=logits)
@@ -100,20 +100,11 @@ class MLPCategoricalActor(Actor):
         tf symbol for mean KL divergence between two batches of categorical probability distributions,
         where the distributions are input as log probs.
         """
-        # _, logp0 = old_policy(obs, act)
-        # logp0 = logp0.detach()
-        # _, logp1 = new_policy(obs, act)
 
-        p0 = old_policy._distribution(obs).probs.detach() + 1e-8
+        p0 = old_policy._distribution(obs).probs.detach() 
         p1 = new_policy._distribution(obs).probs
-        # pi_new = Categorical(old_policy.logits_net(obs))
-        # act_new = pi_new.sample()
-        # logp0 = old_policy._log_prob_from_distribution(pi_old, act_old)
-        # logp1 = new_policy._log_prob_from_distribution(pi_new, act_new)
 
         return torch.sum(p0 * torch.log(p0 / p1), 1).mean()
-        # kl = torch.exp(logp1) * (logp1-logp0)
-        # return kl.sum(-1, keepdim=True).mean()
 
 class MLPGaussianActor(Actor):
     '''
@@ -157,7 +148,7 @@ class MLPGaussianActor(Actor):
 
 
 class MLPActorCritic(nn.Module):
-    def __init__(self, observation_space, action_space, hidden_sizes=(32, 32), activation=nn.ReLU, device='cpu'):
+    def __init__(self, observation_space, action_space, hidden_sizes=(256, 256), activation=nn.ReLU, device='cpu'):
         '''
         A Multi-Layer Perceptron for the Actor_Critic network
         Args:
@@ -172,7 +163,7 @@ class MLPActorCritic(nn.Module):
         try:
             act_dim = action_space.shape[0]
         except IndexError:
-            act_dim = 1
+            act_dim = action_space.n
             
         # Create Actor and Critic networks
         if isinstance(action_space, Box):

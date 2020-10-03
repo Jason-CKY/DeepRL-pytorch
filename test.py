@@ -95,6 +95,19 @@ def main():
 
         model = TD3(lambda: gym.make(args.env), save_dir, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
         model.load_weights(load_buffer=False)
+    elif args.agent.lower() == 'trpo':
+        from Algorithms.trpo.trpo import TRPO
+        save_dir = os.path.join("Model_Weights", args.env, "trpo")
+        config_path = os.path.join(save_dir, "trpo_config.json") 
+        logger_kwargs = {
+            "output_dir": save_dir
+        }
+        with open(config_path, 'r') as f:
+            model_kwargs = json.load(f)
+
+        model = TRPO(lambda: gym.make(args.env), save_dir, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
+        model.load_weights()
+        print(model.ac.state_dict())
 
     ep_ret, ep_len = model.test(render=args.render, record=args.gif, timesteps=args.timesteps)
     print(f"Episode Return: {ep_ret}\nEpisode Length: {ep_len}")

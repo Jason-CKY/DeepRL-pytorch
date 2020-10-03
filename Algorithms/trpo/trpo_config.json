@@ -1,0 +1,17 @@
+{
+    "ac_kwargs": {
+        "hidden_sizes": [64, 64]
+    },
+    "steps_per_epoch": 400,
+    "gamma": 0.99,
+    "delta": 0.01,
+    "vf_lr": 1e-3,
+    "train_v_iters": 80,
+    "damping_coeff": 0.1,
+    "cg_iters": 10,
+    "backtrack_iters": 10,
+    "backtrack_coeff": 0.8,
+    "lam": 0.97,
+    "max_ep_len": 1000,
+    "save_freq": 10
+}
