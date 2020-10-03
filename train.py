@@ -30,7 +30,7 @@ def main():
         }
         with open(config_path, 'r') as f:
             model_kwargs = json.load(f)
-
+        
         model = DDPG(lambda: gym.make(args.env), save_dir, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
         with open(os.path.join(save_dir, "ddpg_config.json"), "w") as f:
             f.write(json.dumps(model_kwargs, indent=4))
