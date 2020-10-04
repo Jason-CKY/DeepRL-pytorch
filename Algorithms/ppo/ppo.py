@@ -14,16 +14,13 @@ from copy import deepcopy
 from torch import optim
 from tqdm import tqdm
 
-class TRPO:
-    
+class PPO:
     def __init__(self, env_fn, save_dir, actor_critic=MLPActorCritic, ac_kwargs=dict(), seed=0, 
-         steps_per_epoch=400, gamma=0.99, delta=0.01, vf_lr=1e-3,
-         train_v_iters=80, damping_coeff=0.1, cg_iters=10, backtrack_iters=10, 
-         backtrack_coeff=0.8, lam=0.97, max_ep_len=1000, logger_kwargs=dict(), 
-         save_freq=10, algo='trpo'):
+         steps_per_epoch=400, gamma=0.99, clip_ratio=0.2, vf_lr=1e-3, pi_lr=3e-4,
+         train_v_iters=80, train_pi_iters=80, lam=0.97, max_ep_len=1000, 
+         target_kl=0.01, logger_kwargs=dict(), save_freq=10):
         """
-        Trust Region Policy Optimization 
-        (with support for Natural Policy Gradient)
+        Proximal Policy Optimization 
         Args:
             env_fn : A function which creates a copy of the environment.
                 The environment must satisfy the OpenAI Gym API.
@@ -35,38 +32,30 @@ class TRPO:
             steps_per_epoch (int): Number of steps of interaction (state-action pairs) 
                 for the agent and the environment in each epoch.
             gamma (float): Discount factor. (Always between 0 and 1.)
-            delta (float): KL-divergence limit for TRPO / NPG update. 
-                (Should be small for stability. Values like 0.01, 0.05.)
+            clip_ratio (float): Hyperparameter for clipping in the policy objective.
+                Roughly: how far can the new policy go from the old policy while 
+                still profiting (improving the objective function)? The new policy 
+                can still go farther than the clip_ratio says, but it doesn't help
+                on the objective anymore. (Usually small, 0.1 to 0.3.) Typically
+                denoted by :math:`\epsilon`. 
+            pi_lr (float): Learning rate for policy optimizer.
             vf_lr (float): Learning rate for value function optimizer.
             train_v_iters (int): Number of gradient descent steps to take on 
                 value function per epoch.
-            damping_coeff (float): Artifact for numerical stability, should be 
-                smallish. Adjusts Hessian-vector product calculation:
-                
-                .. math:: Hv \\rightarrow (\\alpha I + H)v
-                where :math:`\\alpha` is the damping coefficient. 
-                Probably don't play with this hyperparameter.
-            cg_iters (int): Number of iterations of conjugate gradient to perform. 
-                Increasing this will lead to a more accurate approximation
-                to :math:`H^{-1} g`, and possibly slightly-improved performance,
-                but at the cost of slowing things down. 
-                Also probably don't play with this hyperparameter.
-            backtrack_iters (int): Maximum number of steps allowed in the 
-                backtracking line search. Since the line search usually doesn't 
-                backtrack, and usually only steps back once when it does, this
-                hyperparameter doesn't often matter.
-            backtrack_coeff (float): How far back to step during backtracking line
-                search. (Always between 0 and 1, usually above 0.5.)
+            train_pi_iters (int): Maximum number of gradient descent steps to take 
+                on policy loss per epoch. (Early stopping may cause optimizer
+                to take fewer than this.)    
             lam (float): Lambda for GAE-Lambda. (Always between 0 and 1,
                 close to 1.)
             max_ep_len (int): Maximum length of trajectory / episode / rollout.
+            target_kl (float): Roughly what KL divergence we think is appropriate
+                between new and old policies after an update. This will get used 
+                for early stopping. (Usually small, 0.01 or 0.05.)
             logger_kwargs (dict): Keyword args for Logger. 
                             (1) output_dir = None
                             (2) output_fname = 'progress.pickle'
             save_freq (int): How often (in terms of gap between epochs) to save
                 the current policy and value function.
-            algo: Either 'trpo' or 'npg': this code supports both, since they are 
-                almost the same.
         """
         # logger stuff
         self.logger = Logger(**logger_kwargs)
@@ -76,16 +65,19 @@ class TRPO:
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.env, self.test_env = env_fn(), env_fn()
         self.vf_lr = vf_lr
+        self.pi_lr = pi_lr
         self.steps_per_epoch = steps_per_epoch
-        # self.epochs = epochs
+
         self.max_ep_len = self.env.spec.max_episode_steps if self.env.spec.max_episode_steps is not None else max_ep_len
         self.train_v_iters = train_v_iters
+        self.train_pi_iters = train_pi_iters
 
         # Main network
         self.ac = actor_critic(self.env.observation_space, self.env.action_space, device=self.device, **ac_kwargs)
 
         # Create Optimizers
         self.v_optimizer = optim.Adam(self.ac.v.parameters(), lr=self.vf_lr)
+        self.pi_optimizer = optim.Adam(self.ac.pi.parameters(), lr=self.pi_lr)
 
         # GAE buffer
         self.gamma = gamma
@@ -94,79 +86,11 @@ class TRPO:
         self.act_dim = self.env.action_space.shape
         self.buffer = GAEBuffer(self.obs_dim, self.act_dim, self.steps_per_epoch, self.device, self.gamma, self.lam)
 
-        self.cg_iters = cg_iters
-        self.damping_coeff = damping_coeff
-        self.delta = delta
-        self.backtrack_coeff = backtrack_coeff
-        self.algo = algo
-        self.backtrack_iters = backtrack_iters
+        self.clip_ratio = clip_ratio
+        self.target_kl = target_kl
         self.best_mean_reward = -np.inf
         self.save_dir = save_dir
         self.save_freq = save_freq
-
-    def flat_grad(self, grads, hessian=False):
-        grad_flatten = []
-        if hessian == False:
-            for grad in grads:
-                grad_flatten.append(grad.view(-1))
-            grad_flatten = torch.cat(grad_flatten)
-            return grad_flatten
-        elif hessian == True:
-            for grad in grads:
-                grad_flatten.append(grad.contiguous().view(-1))
-            grad_flatten = torch.cat(grad_flatten).data
-            return grad_flatten
-
-    def cg(self, obs, b, EPS=1e-8, residual_tol=1e-10):
-        # Conjugate gradient algorithm
-        # (https://en.wikipedia.org/wiki/Conjugate_gradient_method)
-        x = torch.zeros(b.size()).to(self.device)
-        r = b.clone()
-        p = r.clone()
-        rdotr = torch.dot(r, r).to(self.device)
-
-        for _ in range(self.cg_iters):
-            Ap = self.hessian_vector_product(obs, p)
-            alpha = rdotr / (torch.dot(p, Ap).to(self.device) + EPS)
-            
-            x += alpha * p
-            r -= alpha * Ap
-            
-            new_rdotr = torch.dot(r, r)
-            p = r + (new_rdotr / rdotr) * p
-            rdotr = new_rdotr
-
-            if rdotr < residual_tol:
-                break
-
-        return x
-
-    def hessian_vector_product(self, obs, p):
-        p = p.detach()
-        kl = self.ac.pi.calculate_kl(old_policy=self.ac.pi, new_policy=self.ac.pi, obs=obs)
-        kl_grad = torch.autograd.grad(kl, self.ac.pi.parameters(), create_graph=True)
-        kl_grad = self.flat_grad(kl_grad)
-
-        kl_grad_p = (kl_grad * p).sum() 
-        kl_hessian = torch.autograd.grad(kl_grad_p, self.ac.pi.parameters())
-        kl_hessian = self.flat_grad(kl_hessian, hessian=True)
-        return kl_hessian + p * self.damping_coeff
-
-    def flat_params(self, model):
-        params = []
-        for param in model.parameters():
-            params.append(param.data.view(-1))
-        params_flatten = torch.cat(params)
-        return params_flatten
-
-    def update_model(self, model, new_params):
-        index = 0
-        for params in model.parameters():
-            params_length = len(params.view(-1))
-            new_param = new_params[index: index + params_length]
-            new_param = new_param.view(params.size())
-            params.data.copy_(new_param)
-            index += params_length
 
     def update(self):
         data = self.buffer.get()
@@ -176,68 +100,38 @@ class TRPO:
         adv = data['adv']
         logp_old = data['logp']
 
-        # Prediction logπ_old(s), logπ(s)
-        _, logp = self.ac.pi(obs, act)
-        
-        # Policy loss
-        ratio_old = torch.exp(logp - logp_old)
-        surrogate_adv_old = (ratio_old*adv).mean()
-        
-        # policy gradient calculation as per algorithm, flatten to do matrix calculations later
-        gradient = torch.autograd.grad(surrogate_adv_old, self.ac.pi.parameters()) # calculate gradient of policy loss w.r.t to policy parameters
-        gradient = self.flat_grad(gradient)
+        # ---------------------Recording the losses before the updates --------------------------------
+        pi, logp = self.ac.pi(obs, act)
+        ratio = torch.exp(logp - logp_old)
+        clipped_adv = torch.clamp(ratio, 1-self.clip_ratio, 1+self.clip_ratio) * adv
+        loss_pi = -torch.min(ratio*adv, clipped_adv).mean()
+        v = self.ac.v(obs)
+        loss_v = ((v-ret)**2).mean()
 
-        # Core calculations for NPG/TRPO
-        search_dir = self.cg(obs, gradient.data)    # H^-1 g
-        gHg = (self.hessian_vector_product(obs, search_dir) * search_dir).sum(0)
-        step_size = torch.sqrt(2 * self.delta / gHg)
-        old_params = self.flat_params(self.ac.pi)
-        # update the old model, calculate KL divergence then decide whether to update new model
-        self.update_model(self.ac.pi_old, old_params)        
+        self.logger.store(LossV=loss_v.item(), LossPi=loss_pi.item())
+        # --------------------------------------------------------------------------------------------   
+          
+        # Update Policy     
+        for i in range(self.train_pi_iters):
+            # Policy loss
+            self.pi_optimizer.zero_grad()
+            pi, logp = self.ac.pi(obs, act)
+            ratio = torch.exp(logp - logp_old)
+            clipped_adv = torch.clamp(ratio, 1-self.clip_ratio, 1+self.clip_ratio) * adv
+            loss_pi = -torch.min(ratio*adv, clipped_adv).mean()
+            approx_kl = (logp - logp_old).mean().item()
+            if approx_kl > 1.5*self.target_kl:
+                print(f"Early stopping at step {i} due to reaching max kl")
+                break
+            loss_pi.backward()
+            self.pi_optimizer.step()
 
-        if self.algo == 'npg':
-            params = old_params + step_size * search_dir
-            self.update_model(self.ac.pi, params)
-
-            kl = self.ac.pi.calculate_kl(new_policy=self.ac.pi, old_policy=self.ac.pi_old, obs=obs)
-        elif self.algo == 'trpo':
-            for i in range(self.backtrack_iters):
-                # Backtracking line search
-                # (https://web.stanford.edu/~boyd/cvxbook/bv_cvxbook.pdf) 464p.
-                params = old_params + (self.backtrack_coeff**(i+1)) * step_size * search_dir
-                self.update_model(self.ac.pi, params)
-
-                # Prediction logπ_old(s), logπ(s)
-                _, logp = self.ac.pi(obs, act)
-                
-                # Policy loss
-                ratio = torch.exp(logp - logp_old)
-                surrogate_adv = (ratio*adv).mean()
-
-                improve = surrogate_adv - surrogate_adv_old
-                kl = self.ac.pi.calculate_kl(new_policy=self.ac.pi, old_policy=self.ac.pi_old, obs=obs)
-                
-                # print(f"kl: {kl}")
-                if kl <= self.delta and improve>0:
-                    print('Accepting new params at step %d of line search.'%i)
-                    # self.backtrack_iters.append(i)
-                    # log backtrack_iters=i
-                    break
-
-                if i == self.backtrack_iters-1:
-                    print('Line search failed! Keeping old params.')
-                    # self.backtrack_iters.append(i)
-                    # log backtrack_iters=i
-
-                    params = self.flat_params(self.ac.pi_old)
-                    self.update_model(self.ac.pi, params)
-
-        # Update Critic
+        # Update Value Function
         for _ in range(self.train_v_iters):
             self.v_optimizer.zero_grad()
             v = self.ac.v(obs)
-            v_loss = ((v-ret)**2).mean()
-            v_loss.backward()
+            loss_v = ((v-ret)**2).mean()
+            loss_v.backward()
             self.v_optimizer.step()
 
     def save_weights(self, best=True):
@@ -252,7 +146,8 @@ class TRPO:
         checkpoint = {
             'v': self.ac.v.state_dict(),
             'pi': self.ac.pi.state_dict(),
-            'v_optimizer': self.v_optimizer.state_dict()
+            'v_optimizer': self.v_optimizer.state_dict(),
+            'pi_optimizer': self.pi_optimizer.state_dict()
         }
         torch.save(checkpoint, os.path.join(self.save_dir, fname))
         print(f"checkpoint saved at {os.path.join(self.save_dir, fname)}")
@@ -274,6 +169,7 @@ class TRPO:
             self.ac.v.load_state_dict(checkpoint['v'])
             self.ac.pi.load_state_dict(checkpoint['pi'])
             self.v_optimizer.load_state_dict(checkpoint['v_optimizer'])
+            self.pi_optimizer.load_state_dict(checkpoint['pi_optimizer'])
 
             print('checkpoint loaded at {}'.format(checkpoint_path))
         else:

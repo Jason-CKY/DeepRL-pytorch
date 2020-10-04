@@ -107,7 +107,18 @@ def main():
 
         model = TRPO(lambda: gym.make(args.env), save_dir, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
         model.load_weights()
-        print(model.ac.state_dict())
+    elif args.agent.lower() == 'ppo':
+        from Algorithms.ppo.ppo import PPO
+        save_dir = os.path.join("Model_Weights", args.env, "ppo")
+        config_path = os.path.join(save_dir, "ppo_config.json") 
+        logger_kwargs = {
+            "output_dir": save_dir
+        }
+        with open(config_path, 'r') as f:
+            model_kwargs = json.load(f)
+
+        model = PPO(lambda: gym.make(args.env), save_dir, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
+        model.load_weights()
 
     ep_ret, ep_len = model.test(render=args.render, record=args.gif, timesteps=args.timesteps)
     print(f"Episode Return: {ep_ret}\nEpisode Length: {ep_len}")
