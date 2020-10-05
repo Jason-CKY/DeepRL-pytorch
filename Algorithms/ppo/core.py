@@ -128,7 +128,7 @@ class MLPGaussianActor(Actor):
 
 
 class MLPActorCritic(nn.Module):
-    def __init__(self, observation_space, action_space, hidden_sizes=(256, 256), activation=nn.ReLU, device='cpu'):
+    def __init__(self, observation_space, action_space, hidden_sizes=(256, 256), activation=nn.Tanh, device='cpu'):
         '''
         A Multi-Layer Perceptron for the Actor_Critic network
         Args:

@@ -66,9 +66,10 @@ class PPO:
         self.env, self.test_env = env_fn(), env_fn()
         self.vf_lr = vf_lr
         self.pi_lr = pi_lr
-        self.steps_per_epoch = steps_per_epoch
-
-        self.max_ep_len = self.env.spec.max_episode_steps if self.env.spec.max_episode_steps is not None else max_ep_len
+        self.steps_per_epoch = steps_per_epoch if steps_per_epoch > self.env.spec.max_episode_steps else self.env.spec.max_episode_steps
+        
+        self.max_ep_len = max_ep_len
+        # self.max_ep_len = self.env.spec.max_episode_steps if self.env.spec.max_episode_steps is not None else max_ep_len
         self.train_v_iters = train_v_iters
         self.train_pi_iters = train_pi_iters
 
