@@ -33,15 +33,15 @@ This repo is an implementation of various deep RL algorithm on pybullet robotic 
             <td> TRPO </td>
             <td> :heavy_check_mark: </td>
             <td> :heavy_check_mark: </td>
-            <td> :x: </td>
             <td> :heavy_check_mark: </td>
+            <td> :x: </td>
         </tr>
         <tr>
             <td> PPO </td>
             <td> :heavy_check_mark: </td>
             <td> :heavy_check_mark: </td>
-            <td> :x: </td>
             <td> :heavy_check_mark: </td>
+            <td> :x: </td>
         </tr>       
     </tbody>
 </table>
