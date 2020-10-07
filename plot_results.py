@@ -78,6 +78,7 @@ def main():
     plt.title(title + " Smoothed")
     if args.save:
         fname = "comparison.png" if args.compare else "learning_curve.png"
+        save_dir = os.path.join("Model_Weights", args.env)
         plt.savefig(os.path.join(save_dir, fname))
     plt.show()
 

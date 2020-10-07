@@ -100,7 +100,7 @@ class TD3:
         self.obs_dim = self.env.observation_space.shape[0]
         self.act_dim = self.env.action_space.shape[0]
         self.num_test_episodes = num_test_episodes
-        self.max_ep_len = self.env.max_episode_steps if self.env.max_episode_steps is not None else max_ep_len
+        self.max_ep_len = self.env.spec.max_episode_steps if self.env.spec.max_episode_steps is not None else max_ep_len
         self.start_steps = start_steps
         self.update_after = update_after
         self.update_every = update_every
