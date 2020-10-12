@@ -82,6 +82,7 @@ class MLPCategoricalActor(Actor):
         '''
         super().__init__()
         self.logits_net = mlp([obs_dim] + list(hidden_sizes) + [act_dim], activation)
+        self.logits_net[-2].weight.data /= 100 # last layer is Identity, so we tweak second last layer weights
 
     def _distribution(self, obs):
         logits = self.logits_net(obs)
@@ -123,6 +124,7 @@ class MLPGaussianActor(Actor):
         log_std = -0.5*np.ones(act_dim, dtype=np.float32)
         self.log_std = torch.nn.Parameter(torch.as_tensor(log_std))
         self.mu_net = mlp([obs_dim] + list(hidden_sizes) + [act_dim], activation)
+        self.mu_net[-2].weight.data /= 100 # last layer is Identity, so we tweak second last layer weights
     
     def _distribution(self, obs):
         mu = self.mu_net(obs)
@@ -148,7 +150,7 @@ class MLPGaussianActor(Actor):
 
 
 class MLPActorCritic(nn.Module):
-    def __init__(self, observation_space, action_space, hidden_sizes=(256, 256), activation=nn.Tanh, device='cpu'):
+    def __init__(self, observation_space, action_space, v_hidden_sizes=(256, 256), pi_hidden_sizes=(64,64), activation=nn.Tanh, device='cpu'):
         '''
         A Multi-Layer Perceptron for the Actor_Critic network
         Args:
@@ -167,14 +169,14 @@ class MLPActorCritic(nn.Module):
             
         # Create Actor and Critic networks
         if isinstance(action_space, Box):
-            self.pi = MLPGaussianActor(obs_dim, act_dim, hidden_sizes, activation).to(device)
-            self.pi_old = MLPGaussianActor(obs_dim, act_dim, hidden_sizes, activation).to(device)
+            self.pi = MLPGaussianActor(obs_dim, act_dim, pi_hidden_sizes, activation).to(device)
+            self.pi_old = MLPGaussianActor(obs_dim, act_dim, pi_hidden_sizes, activation).to(device)
 
         elif isinstance(action_space, Discrete):
-            self.pi = MLPCategoricalActor(obs_dim, act_dim, hidden_sizes, activation).to(device)
-            self.pi_old = MLPCategoricalActor(obs_dim, act_dim, hidden_sizes, activation).to(device)
+            self.pi = MLPCategoricalActor(obs_dim, act_dim, pi_hidden_sizes, activation).to(device)
+            self.pi_old = MLPCategoricalActor(obs_dim, act_dim, pi_hidden_sizes, activation).to(device)
 
-        self.v = MLPCritic(obs_dim, hidden_sizes, activation).to(device)
+        self.v = MLPCritic(obs_dim, v_hidden_sizes, activation).to(device)
     
     def step(self, obs):
         with torch.no_grad():

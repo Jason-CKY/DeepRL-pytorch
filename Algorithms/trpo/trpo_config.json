@@ -1,6 +1,7 @@
 {
     "ac_kwargs": {
-        "hidden_sizes": [256, 256]
+        "v_hidden_sizes": [256, 256],
+        "pi_hidden_sizes": [64, 64]
     },
     "steps_per_epoch": 4000,
     "gamma": 0.99,
