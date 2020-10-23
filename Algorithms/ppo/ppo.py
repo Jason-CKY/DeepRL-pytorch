@@ -66,7 +66,7 @@ class PPO:
         self.env, self.test_env = env_fn(), env_fn()
         self.vf_lr = vf_lr
         self.pi_lr = pi_lr
-        self.steps_per_epoch = steps_per_epoch if steps_per_epoch > self.env.spec.max_episode_steps else self.env.spec.max_episode_steps
+        self.steps_per_epoch = steps_per_epoch # if steps_per_epoch > self.env.spec.max_episode_steps else self.env.spec.max_episode_steps
         
         self.max_ep_len = max_ep_len
         # self.max_ep_len = self.env.spec.max_episode_steps if self.env.spec.max_episode_steps is not None else max_ep_len
@@ -74,6 +74,7 @@ class PPO:
         self.train_pi_iters = train_pi_iters
 
         # Main network
+        self.ac_kwargs = ac_kwargs
         self.ac = actor_critic(self.env.observation_space, self.env.action_space, device=self.device, **ac_kwargs)
 
         # Create Optimizers
@@ -92,6 +93,20 @@ class PPO:
         self.best_mean_reward = -np.inf
         self.save_dir = save_dir
         self.save_freq = save_freq
+
+    def reinit_network(self):
+        '''
+        Re-initialize network weights and optimizers for a fresh agent to train
+        '''
+        # Main network
+        self.ac = actor_critic(self.env.observation_space, self.env.action_space, device=self.device, **self.ac_kwargs)
+
+        # Create Optimizers
+        self.v_optimizer = optim.Adam(self.ac.v.parameters(), lr=self.vf_lr)
+        self.pi_optimizer = optim.Adam(self.ac.pi.parameters(), lr=self.pi_lr)
+
+        self.buffer = GAEBuffer(self.obs_dim, self.act_dim, self.steps_per_epoch, self.device, self.gamma, self.lam)
+
 
     def update(self):
         data = self.buffer.get()
@@ -176,7 +191,7 @@ class PPO:
         else:
             raise OSError("Checkpoint file not found.")    
 
-    def learn(self, timesteps):
+    def learn_one_trial(self, timesteps):
         ep_rets = []
         epochs = int((timesteps/self.steps_per_epoch) + 0.5)
         print("Rounded off to {} epochs with {} steps per epoch, total {} timesteps".format(epochs, self.steps_per_epoch, epochs*self.steps_per_epoch))
@@ -231,6 +246,15 @@ class PPO:
             self.update()
             self.logger.dump()
 
+    def learn(self, timesteps, num_trials=1):
+        for trial in range(num_trials):
+            self.learn_one_trial(timesteps)
+
+            self.logger.reset()
+            self.reinit_network()
+            print()
+            print(f"Trial {trial+1}/{num_trials} complete")
+    
     def test(self, timesteps=None, render=False, record=False):
         '''
         Test the agent in the environment

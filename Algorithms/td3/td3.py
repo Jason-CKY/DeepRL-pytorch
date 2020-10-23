@@ -80,6 +80,7 @@ class TD3:
         self.act_limit = self.env.action_space.high[0]
 
         # Create actor-critic module
+        self.ac_kwargs = ac_kwargs
         self.ac = actor_critic(self.env.observation_space, self.env.action_space, device=self.device, **ac_kwargs)
         self.ac_targ = deepcopy(self.ac)
 
@@ -88,9 +89,12 @@ class TD3:
             p.requires_grad = False
         
         # Experience buffer
+        self.replay_size = replay_size
         self.replay_buffer = ReplayBuffer(int(replay_size))
 
         # Set up optimizers for actor and critic
+        self.pi_lr = pi_lr
+        self.q_lr = q_lr
         self.pi_optimizer = Adam(self.ac.pi.parameters(), lr=pi_lr)
         self.q_optimizer = Adam(chain(self.ac.q1.parameters(), self.ac.q2.parameters()), lr=q_lr)
 
@@ -110,7 +114,26 @@ class TD3:
 
         self.best_mean_reward = -np.inf
         self.save_dir = save_dir
+
+    def reinit_network(self):
+        '''
+        Re-initialize network weights and optimizers for a fresh agent to train
+        '''
+        # Create actor-critic module
+        self.ac = actor_critic(self.env.observation_space, self.env.action_space, device=self.device, **self.ac_kwargs)
+        self.ac_targ = deepcopy(self.ac)
+
+        # Freeze target networks with respect to optimizers
+        for p in self.ac_targ.parameters():
+            p.requires_grad = False
         
+        # Experience buffer
+        self.replay_buffer = ReplayBuffer(int(self.replay_size))
+
+        # Set up optimizers for actor and critic
+        self.pi_optimizer = Adam(self.ac.pi.parameters(), lr=self.pi_lr)
+        self.q_optimizer = Adam(chain(self.ac.q1.parameters(), self.ac.q2.parameters()), lr=self.q_lr)
+                
     def update(self, experiences, update_policy=False):
         '''
         Do gradient updates for actor-critic models
@@ -255,13 +278,7 @@ class TD3:
         else:
             raise OSError("Checkpoint file not found.")    
 
-    def learn(self, timesteps):
-        '''
-        Function to learn using TD3.
-        Args:
-            timesteps (int): number of timesteps to train for
-        '''
-        start_time = time.time()
+    def learn_one_trial(self, timesteps):
         state, ep_ret, ep_len = self.env.reset(), 0, 0
         episode = 0
         for timestep in tqdm(range(timesteps)):
@@ -323,6 +340,22 @@ class TD3:
                 self.evaluate_agent()
                 self.logger.dump()
 
+    def learn(self, timesteps, num_trials=1):
+        '''
+        Function to learn using TD3.
+        Args:
+            timesteps (int): number of timesteps to train for
+            num_trials (int): Number of times to train the agent
+        '''
+        
+        for trial in range(num_trials):
+            self.learn_one_trial(timesteps)
+            
+            self.logger.reset()
+            self.reinit_network()
+            print()
+            print(f"Trial {trial+1}/{num_trials} complete")
+            
     def test(self, timesteps=None, render=False, record=False):
         '''
         Test the agent in the environment

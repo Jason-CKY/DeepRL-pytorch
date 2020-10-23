@@ -31,7 +31,7 @@ def standardise_graph(x1, y1, x2, y2):
 def plot_result(env, agent):
     save_dir = os.path.join("Model_Weights", env, agent)
     logger = Logger(output_dir=save_dir)
-    x, y = logger.load_results(["EpLen", "EpRet"])
+    x, y = logger.load_results(["EpLen", "EpRet"])[0]
     x = cumulative_sum(x)
     y = moving_average(y, window=50)
     x = x[len(x) - len(y):]
