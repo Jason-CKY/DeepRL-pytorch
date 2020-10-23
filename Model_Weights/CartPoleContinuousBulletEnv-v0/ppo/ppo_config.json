@@ -1,19 +1,23 @@
 {
     "ac_kwargs": {
-        "hidden_sizes": [
+        "v_hidden_sizes": [
+            256,
+            256
+        ],
+        "pi_hidden_sizes": [
             64,
             64
         ]
     },
-    "steps_per_epoch": 400,
+    "steps_per_epoch": 4000,
     "gamma": 0.99,
-    "clip_ratio": 0.2,
+    "clip_ratio": 0.25,
     "pi_lr": 0.0003,
     "vf_lr": 0.001,
     "train_v_iters": 80,
     "train_pi_iters": 80,
-    "lam": 0.97,
-    "max_ep_len": 1000,
+    "lam": 0.9,
+    "max_ep_len": 2048,
     "target_kl": 0.01,
     "save_freq": 10
 }

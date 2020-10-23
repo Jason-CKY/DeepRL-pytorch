@@ -80,6 +80,7 @@ class TD3:
         self.act_limit = self.env.action_space.high[0]
 
         # Create actor-critic module
+        self.actor_critic = actor_critic
         self.ac_kwargs = ac_kwargs
         self.ac = actor_critic(self.env.observation_space, self.env.action_space, device=self.device, **ac_kwargs)
         self.ac_targ = deepcopy(self.ac)
@@ -120,7 +121,8 @@ class TD3:
         Re-initialize network weights and optimizers for a fresh agent to train
         '''
         # Create actor-critic module
-        self.ac = actor_critic(self.env.observation_space, self.env.action_space, device=self.device, **self.ac_kwargs)
+        self.best_mean_reward = -np.inf
+        self.ac = self.actor_critic(self.env.observation_space, self.env.action_space, device=self.device, **self.ac_kwargs)
         self.ac_targ = deepcopy(self.ac)
 
         # Freeze target networks with respect to optimizers

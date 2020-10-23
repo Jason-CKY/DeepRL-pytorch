@@ -54,7 +54,7 @@ class Logger:
         #     pickle.dump(self.logger_dict, f)
 
         if self.init:
-            assert self.logger_dict == True, "no variables stored inside dictionary to dump!"
+            assert len(self.logger_dict) > 0, "no variables stored inside dictionary to dump!"
             self.logger_list.append(self.logger_dict)
             self.init = False
         else:
@@ -81,11 +81,7 @@ class Logger:
         '''
 
         output = []
-        for json_dict in self.logger_list:
-            output_dict = []
-            for key in keys:
-                assert key in json_dict.keys(), "Attempted to get variables that are not stored in this .json file"
-                output_dict.append(json_dict[key])
-        
-            output.append(output_dict)
+        for key in keys:
+            assert key in self.logger_dict.keys(), "Attempted to get variables that are not stored in this .json file"
+            output.append(self.logger_dict[key])
         return output

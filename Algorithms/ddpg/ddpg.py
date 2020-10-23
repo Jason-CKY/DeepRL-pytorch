@@ -70,6 +70,7 @@ class DDPG:
         self.act_limit = self.env.action_space.high[0]
 
         # Create actor-critic module
+        self.actor_critic = actor_critic
         self.ac_kwargs = ac_kwargs
         self.ac = actor_critic(self.env.observation_space, self.env.action_space, device=self.device, **ac_kwargs)
         self.ac_targ = deepcopy(self.ac)
@@ -108,8 +109,10 @@ class DDPG:
         '''
         Re-initialize network weights and optimizers for a fresh agent to train
         '''
+        self.best_mean_reward = -np.inf
+        
         # Create actor-critic module
-        self.ac = actor_critic(self.env.observation_space, self.env.action_space, device=self.device, **self.ac_kwargs)
+        self.ac = self.actor_critic(self.env.observation_space, self.env.action_space, device=self.device, **self.ac_kwargs)
         self.ac_targ = deepcopy(self.ac)
 
         # Freeze target networks with respect to optimizers

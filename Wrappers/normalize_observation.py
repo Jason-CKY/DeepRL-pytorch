@@ -27,5 +27,5 @@ class Normalize_Observation(gym.ObservationWrapper):
         mean = temp_arr.mean(axis=0)
         std = temp_arr.std(axis=0)
         output_observation = (observation - mean) / np.maximum(std, self.eps)
-        print(f"Mean: {output_observation.mean(axis=0)}, Std: {output_observation.std(axis=0)}")
+        # print(f"Mean: {output_observation.mean(axis=0)}, Std: {output_observation.std(axis=0)}")
         return output_observation

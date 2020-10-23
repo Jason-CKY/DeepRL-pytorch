@@ -74,6 +74,7 @@ class PPO:
         self.train_pi_iters = train_pi_iters
 
         # Main network
+        self.actor_critic = actor_critic
         self.ac_kwargs = ac_kwargs
         self.ac = actor_critic(self.env.observation_space, self.env.action_space, device=self.device, **ac_kwargs)
 
@@ -98,8 +99,10 @@ class PPO:
         '''
         Re-initialize network weights and optimizers for a fresh agent to train
         '''
+        self.best_mean_reward = -np.inf
+        
         # Main network
-        self.ac = actor_critic(self.env.observation_space, self.env.action_space, device=self.device, **self.ac_kwargs)
+        self.ac = self.actor_critic(self.env.observation_space, self.env.action_space, device=self.device, **self.ac_kwargs)
 
         # Create Optimizers
         self.v_optimizer = optim.Adam(self.ac.v.parameters(), lr=self.vf_lr)

@@ -13,8 +13,8 @@ def parse_arguments():
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--env', type=str, default='CartPoleContinuousBulletEnv-v0', help='environment_id')
-    parser.add_argument('--agent', type=str, default='ddpg', help='specify type of agent (e.g. DDPG/TRPO/PPO/random)')
-    parser.add_argument('--timesteps', type=int, required=True, help='specify number of timesteps to train for') 
+    parser.add_argument('--agent', type=str, default='ppo', help='specify type of agent (e.g. DDPG/TRPO/PPO/random)')
+    parser.add_argument('--timesteps', type=int, default=10000, help='specify number of timesteps to train for') 
     parser.add_argument('--seed', type=int, default=0, help='seed number for reproducibility')
     parser.add_argument('--num_trials', type=int, default=1, help='Number of times to train the algo')
     return parser.parse_args()
