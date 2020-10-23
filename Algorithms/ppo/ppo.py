@@ -99,9 +99,9 @@ class PPO:
         '''
         Re-initialize network weights and optimizers for a fresh agent to train
         '''
-        self.best_mean_reward = -np.inf
-        
+
         # Main network
+        self.best_mean_reward = -np.inf
         self.ac = self.actor_critic(self.env.observation_space, self.env.action_space, device=self.device, **self.ac_kwargs)
 
         # Create Optimizers

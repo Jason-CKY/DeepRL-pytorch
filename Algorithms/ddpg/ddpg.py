@@ -108,10 +108,10 @@ class DDPG:
     def reinit_network(self):
         '''
         Re-initialize network weights and optimizers for a fresh agent to train
-        '''
-        self.best_mean_reward = -np.inf
+        '''        
         
         # Create actor-critic module
+        self.best_mean_reward = -np.inf
         self.ac = self.actor_critic(self.env.observation_space, self.env.action_space, device=self.device, **self.ac_kwargs)
         self.ac_targ = deepcopy(self.ac)
 
@@ -256,7 +256,7 @@ class DDPG:
         else:
             raise OSError("Checkpoint file not found.")    
 
-    def learn_one_trial(timesteps):
+    def learn_one_trial(self, timesteps):
         state, ep_ret, ep_len = self.env.reset(), 0, 0
         episode = 0
         for timestep in tqdm(range(timesteps)):

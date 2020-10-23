@@ -10,7 +10,7 @@ class Logger:
     Simplify the saving of diagnostics, hyperparameter configurations, and the 
     state of a training run. Saves the data in the form of a dictionary, and dumps them into a .json file
     """
-    def __init__(self, output_dir=None, output_fname='logs.json'):
+    def __init__(self, output_dir=None, output_fname='logs.json', load=False):
         """
         Initialize a Logger.
         Args:
@@ -27,9 +27,10 @@ class Logger:
         self.output_filepath = os.path.join(self.output_dir, output_fname)
         self.logger_dict = {}
         self.logger_list = [self.logger_dict]
-        if os.path.isfile(self.output_filepath):
-            with open(self.output_filepath, 'r') as f:
-                self.logger_list = json.loads(f.read())
+        if load:
+            if os.path.isfile(self.output_filepath):
+                with open(self.output_filepath, 'r') as f:
+                    self.logger_list = json.loads(f.read())
         self.init = True
         
 
