@@ -10,7 +10,7 @@ class Logger:
     Simplify the saving of diagnostics, hyperparameter configurations, and the 
     state of a training run. Saves the data in the form of a dictionary, and dumps them into a .json file
     """
-    def __init__(self, output_dir=None, output_fname='logs.json', load=False):
+    def __init__(self, output_dir=None, output_fname='logs.pickle', load=False):
         """
         Initialize a Logger.
         Args:
@@ -29,8 +29,8 @@ class Logger:
         self.logger_list = [self.logger_dict]
         if load:
             if os.path.isfile(self.output_filepath):
-                with open(self.output_filepath, 'r') as f:
-                    self.logger_list = json.loads(f.read())
+                with open(self.output_filepath, 'rb') as f:
+                    self.logger_list = pickle.load(f)
         self.init = True
         
 
@@ -52,8 +52,8 @@ class Logger:
         """
         assert len(self.logger_dict) > 0, "no variables stored inside dictionary to dump!"
         
-        with open(self.output_filepath, 'w') as f:
-            f.write(json.dumps(self.logger_list + [self.logger_dict], indent=4))
+        with open(self.output_filepath, 'wb') as f:
+            pickle.dump(self.logger_list + [self.logger_dict], f)
     
     def reset(self):
         '''
@@ -62,8 +62,8 @@ class Logger:
         self.logger_list.append(self.logger_dict)
         self.logger_dict = {}
         
-        with open(self.output_filepath, 'w') as f:
-            f.write(json.dumps(self.logger_list, indent=4))
+        with open(self.output_filepath, 'wb') as f:
+            pickle.dump(self.logger_list, f)
 
     def load_results(self, keys):
         '''

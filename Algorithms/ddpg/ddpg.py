@@ -133,6 +133,8 @@ class DDPG:
             experiences: sampled s, a, r, s', terminals from replay buffer.
         '''
         # Get states, action, rewards, next_states, terminals from experiences
+        self.ac.train()
+        self.ac_targ.train()
         states, actions, rewards, next_states, terminals = experiences
         states = states.to(self.device)
         next_states = next_states.to(self.device)
@@ -188,6 +190,8 @@ class DDPG:
         Return:
             Action (numpy ndarray): Scaled action that is clipped to environment's action limits
         '''
+        self.ac.eval()
+        self.ac_targ.eval()
         obs = torch.as_tensor(obs, dtype=torch.float32).to(self.device)
         action = self.ac.act(obs)
         action += noise_scale*np.random.randn(self.act_dim)
@@ -298,8 +302,6 @@ class DDPG:
                 if len(x) > 0:
                     # Mean training reward over the last 50 episodes
                     mean_reward = np.mean(y[-50:])
-                    # print("Num timesteps: {}".format(timestep))
-                    # print("Best mean reward: {:.2f} - Last mean reward per episode: {:.2f}".format(self.best_mean_reward, mean_reward))
 
                     # New best model
                     if mean_reward > self.best_mean_reward:

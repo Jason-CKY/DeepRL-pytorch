@@ -112,6 +112,7 @@ class PPO:
 
 
     def update(self):
+        self.ac.train()
         data = self.buffer.get()
         obs = data['obs']
         act = data['act']
@@ -245,7 +246,7 @@ class PPO:
                             print("Solved Environment, stopping iteration...")
                             return
 
-            # update value function and TRPO policy update
+            # update value function and PPO policy update
             self.update()
             self.logger.dump()
 

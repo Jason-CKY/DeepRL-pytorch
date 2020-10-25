@@ -179,6 +179,8 @@ class MLPActorCritic(nn.Module):
         self.v = MLPCritic(obs_dim, v_hidden_sizes, activation).to(device)
     
     def step(self, obs):
+        self.pi.eval()
+        self.v.eval()
         with torch.no_grad():
             pi = self.pi._distribution(obs)
             a = pi.sample()

@@ -182,6 +182,7 @@ class TRPO:
             index += params_length
 
     def update(self):
+        self.ac.train()
         data = self.buffer.get()
         obs = data['obs']
         act = data['act']

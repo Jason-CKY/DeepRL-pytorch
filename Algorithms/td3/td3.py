@@ -143,6 +143,8 @@ class TD3:
             experiences: sampled s, a, r, s', terminals from replay buffer.
             update_policy (bool): If True, update the actor network
         '''
+        self.ac.train()
+        self.ac_targ.train()
         # Get states, action, rewards, next_states, terminals from experiences
         states, actions, rewards, next_states, terminals = experiences
         states = states.to(self.device)
@@ -212,6 +214,8 @@ class TD3:
         Return:
             Action (numpy ndarray): Scaled action that is clipped to environment's action limits
         '''
+        self.ac.eval()
+        self.ac_targ.eval()
         obs = torch.as_tensor(obs, dtype=torch.float32).to(self.device)
         action = self.ac.act(obs)
         action += noise_scale*np.random.randn(self.act_dim)

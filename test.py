@@ -7,7 +7,7 @@ import torch
 import imageio
 import numpy as np
 
-from Wrappers.normalized_action import NormalizedActions
+from Wrappers.normalize_observation import Normalize_Observation
 from stable_baselines3.common.cmd_util import make_vec_env
 from stable_baselines3.common.vec_env import VecNormalize
 
@@ -71,6 +71,7 @@ def main():
         save_dir = os.path.join("Model_Weights", args.env) if args.gif else None
         random_test(lambda:gym.make(args.env), render=args.render, record_dir=save_dir, timesteps=args.timesteps)
         return
+
     elif args.agent.lower() == 'ddpg':
         from Algorithms.ddpg.ddpg import DDPG
         save_dir = os.path.join("Model_Weights", args.env, "ddpg")
@@ -80,7 +81,7 @@ def main():
         }
         with open(config_path, 'r') as f:
             model_kwargs = json.load(f)
-
+            
         model = DDPG(lambda: gym.make(args.env), save_dir, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
         model.load_weights(load_buffer=False)
     elif args.agent.lower() == 'td3':
@@ -105,7 +106,7 @@ def main():
         with open(config_path, 'r') as f:
             model_kwargs = json.load(f)
 
-        model = TRPO(lambda: gym.make(args.env), save_dir, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
+        model = TRPO(lambda: Normalize_Observation(gym.make(args.env)), save_dir, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
         model.load_weights()
     elif args.agent.lower() == 'ppo':
         from Algorithms.ppo.ppo import PPO
@@ -117,7 +118,7 @@ def main():
         with open(config_path, 'r') as f:
             model_kwargs = json.load(f)
 
-        model = PPO(lambda: gym.make(args.env), save_dir, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
+        model = PPO(lambda: Normalize_Observation(gym.make(args.env)), save_dir, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
         model.load_weights()
 
     ep_ret, ep_len = model.test(render=args.render, record=args.gif, timesteps=args.timesteps)
