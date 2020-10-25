@@ -151,7 +151,7 @@ class DDPG:
         
         # MSE loss
         loss_q = ((Q_values-Qprime)**2).mean()
-        loss_info = dict(Qvals=Q_values.detach().cpu().numpy())
+        loss_info = dict(Qvals=Q_values.detach().cpu().numpy().tolist())
 
         loss_q.backward()
         self.q_optimizer.step()

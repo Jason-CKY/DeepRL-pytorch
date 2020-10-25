@@ -171,8 +171,8 @@ class TD3:
         
         # MSE loss
         loss_q = ((q1-Qprime)**2).mean() + ((q2-Qprime)**2).mean()
-        loss_info = dict(Q1vals=q1.detach().cpu().numpy(),
-                        Q2Vals=q2.detach().cpu().numpy())
+        loss_info = dict(Q1vals=q1.detach().cpu().numpy().tolist(),
+                        Q2Vals=q2.detach().cpu().numpy().tolist())
 
         loss_q.backward()
         self.q_optimizer.step()

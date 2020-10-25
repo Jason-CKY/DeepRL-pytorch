@@ -50,27 +50,18 @@ class Logger:
         Write all of the diagnostics from the current iteration.
         Writes to the output file.
         """
-        # print(self.logger_dict)
-        # with open(self.output_filepath, 'wb') as f:
-        #     pickle.dump(self.logger_dict, f)
-
-        if self.init:
-            assert len(self.logger_dict) > 0, "no variables stored inside dictionary to dump!"
-            self.logger_list.append(self.logger_dict)
-            self.init = False
-        else:
-            self.logger_list[-1] = self.logger_dict
-
+        assert len(self.logger_dict) > 0, "no variables stored inside dictionary to dump!"
+        
         with open(self.output_filepath, 'w') as f:
-            f.write(json.dumps(self.logger_list, indent=4))
+            f.write(json.dumps(self.logger_list + [self.logger_dict], indent=4))
     
     def reset(self):
         '''
         Reset the log dict for a new experiment. Used for training the same algorithm multiple times
         '''
-        self.logger_dict = {}
         self.logger_list.append(self.logger_dict)
-
+        self.logger_dict = {}
+        
         with open(self.output_filepath, 'w') as f:
             f.write(json.dumps(self.logger_list, indent=4))
 
