@@ -1,8 +1,8 @@
 {
     "ac_kwargs": {
         "v_hidden_sizes": [
-            256,
-            256
+            64,
+            64
         ],
         "pi_hidden_sizes": [
             64,

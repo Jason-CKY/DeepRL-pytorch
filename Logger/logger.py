@@ -26,7 +26,7 @@ class Logger:
 
         self.output_filepath = os.path.join(self.output_dir, output_fname)
         self.logger_dict = {}
-        self.logger_list = [self.logger_dict]
+        self.logger_list = []
         if load:
             if os.path.isfile(self.output_filepath):
                 with open(self.output_filepath, 'rb') as f:
@@ -74,6 +74,22 @@ class Logger:
 
         output = []
         for key in keys:
-            assert key in self.logger_dict.keys(), "Attempted to get variables that are not stored in this .json file"
+            assert key in self.logger_dict.keys(), "Attempted to get variables that are not stored in this logger dict"
             output.append(self.logger_dict[key])
+        return output
+
+    def load_all_results(self, keys):
+        '''
+        return all the stored variables in the .json file
+        Args:
+            keys (list): list of keys to extract from logger
+        '''
+        output = []
+        for key in keys:
+            cache = []
+            for logger_dict in self.logger_list:
+                assert key in logger_dict.keys(), "Attempted to get variables that are not stored in this .json file"
+                cache.append(logger_dict[key])
+            output.append(cache)
+
         return output

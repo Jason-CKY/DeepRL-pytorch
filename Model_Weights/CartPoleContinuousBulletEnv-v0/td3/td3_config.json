@@ -1,12 +1,15 @@
 {
     "ac_kwargs": {
-        "hidden_sizes": [64, 64]
+        "hidden_sizes": [
+            64,
+            64
+        ]
     },
-    "replay_size": 1e6,
+    "replay_size": 1000000.0,
     "gamma": 0.99,
     "tau": 0.995,
-    "pi_lr": 1e-3,
-    "q_lr": 1e-3,
+    "pi_lr": 0.001,
+    "q_lr": 0.001,
     "batch_size": 100,
     "start_steps": 1000,
     "update_after": 1000,

@@ -11,8 +11,11 @@ def moving_average(values, window):
     :param window: (int)
     :return: (numpy array)
     """
-    weights = np.repeat(1.0, window) / window
-    return np.convolve(values, weights, 'valid')
+    output = []
+    for idx in range(len(values)):
+        output.append(np.mean(values[:idx+1][-window:]))
+
+    return output
 
 def cumulative_sum(x):
     x = np.array(x)
@@ -28,14 +31,46 @@ def standardise_graph(x1, y1, x2, y2):
             y2 = y2[:count]
     return x2, y2
 
-def plot_result(env, agent):
+def standardise_lengths(x, max_length):
+    standardised_x = []
+    for i in x:
+        standardised_x.append(i + [i[-1]]*(max_length-len(i)))
+    
+    return standardised_x
+
+def plot_results(env, agent, show_each_trial=False):
     save_dir = os.path.join("Model_Weights", env, agent)
     logger = Logger(output_dir=save_dir, load=True)
-    x, y = logger.load_results(["EpLen", "EpRet"])[0]
-    x = cumulative_sum(x)
-    y = moving_average(y, window=50)
-    x = x[len(x) - len(y):]
-    plt.plot(x, y, label=f"{agent}")
+    EpLen_list, EpRet_list = logger.load_all_results(["EpLen", "EpRet"])
+    Ep_Returns, Ep_Lengths = [], []
+    max_length = len(EpLen_list[0])
+    max_idx = 0
+    for idx, (EpLen, EpRet) in enumerate(zip(EpLen_list, EpRet_list)):
+        EpLen = cumulative_sum(EpLen)
+        EpRet = moving_average(EpRet, window=50)
+        if show_each_trial:
+            plt.plot(x, y, label=f"trial: {idx+1}")
+        if len(EpLen) > max_length:
+            max_length = len(EpLen)
+            max_idx = idx
+        Ep_Returns.append(EpRet)
+        Ep_Lengths.append(EpLen)
+
+    EpLen = Ep_Lengths[max_idx]
+    Ep_Returns = np.array(standardise_lengths(Ep_Returns, max_length)).T
+
+    ret_mean = []
+    ret_std = []
+    for ep_ret in Ep_Returns:
+        ret_mean.append(ep_ret.mean())
+        ret_std.append(ep_ret.std()) 
+
+    ret_mean = np.array(ret_mean)
+    ret_std = np.array(moving_average(ret_std, 50))
+    
+    if not show_each_trial:
+        plt.plot(EpLen, ret_mean, label=f"{agent}")
+        plt.fill_between(EpLen, ret_mean-ret_std, ret_mean+ret_std, alpha=0.2)
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
@@ -53,13 +88,13 @@ def main():
     title='Learning Curve'
     fig = plt.figure(title)
     if args.agent is not None:
-        plot_result(args.env, args.agent)
+        plot_results(args.env, args.agent)
     if args.compare:
         agents = os.listdir(os.path.join("Model_Weights", args.env))
         if args.agent is not None:
             agents.remove(args.agent)
         for agent in agents:
-            plot_result(args.env, agent)
+            plot_results(args.env, agent)
 
     elif args.baseline:
         log_dir = os.path.join("Stable_Baselines", "logs", os.path.sep.join(args.log_dir.split(os.path.sep)[1:]))
