@@ -82,7 +82,7 @@ def main():
         with open(config_path, 'r') as f:
             model_kwargs = json.load(f)
             
-        model = DDPG(lambda: gym.make(args.env), save_dir, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
+        model = DDPG(lambda: Normalize_Observation(gym.make(args.env)), save_dir, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
         model.load_weights(load_buffer=False)
     elif args.agent.lower() == 'td3':
         from Algorithms.td3.td3 import TD3
@@ -94,7 +94,7 @@ def main():
         with open(config_path, 'r') as f:
             model_kwargs = json.load(f)
 
-        model = TD3(lambda: gym.make(args.env), save_dir, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
+        model = TD3(lambda: Normalize_Observation(gym.make(args.env)), save_dir, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
         model.load_weights(load_buffer=False)
     elif args.agent.lower() == 'trpo':
         from Algorithms.trpo.trpo import TRPO

@@ -60,7 +60,7 @@ This repo is an implementation of various deep RL algorithm on pybullet robotic 
         <tr>
             <td> CartPole Continuous BulletEnv-v0 </td>
             <td> <img src = 'Model_Weights\CartPoleContinuousBulletEnv-v0\comparison.png'> </td>
-            <td><img src = 'Model_Weights\CartPoleContinuousBulletEnv-v0\ddpg\recording.gif'> </td>
+            <td><img src = 'Model_Weights\CartPoleContinuousBulletEnv-v0\ppo\recording.gif'> </td>
         </tr>
         <tr>
             <td> Inverted Pendulum BulletEnv-v0 </td>

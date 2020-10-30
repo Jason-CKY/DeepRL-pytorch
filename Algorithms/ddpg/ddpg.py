@@ -213,16 +213,19 @@ class DDPG:
                 ep_len += 1
             self.logger.store(TestEpRet=ep_ret, TestEpLen=ep_len)
 
-    def save_weights(self, best=True):
+    def save_weights(self, best=False, fname=None):
         '''
         save the pytorch model weights of ac and ac_targ
         Args:
 
         '''
-        if best:
-            fname = "best.pth"
+        if fname is not None:
+            _fname = fname
+        elif best:
+            _fname = "best.pth"
         else:
-            fname = "model_weights.pth"
+            _fname = "model_weights.pth"
+        
         print('saving checkpoint...')
         checkpoint = {
             'ac': self.ac.state_dict(),
@@ -230,9 +233,9 @@ class DDPG:
             'pi_optimizer': self.pi_optimizer.state_dict(),
             'q_optimizer': self.q_optimizer.state_dict()
         }
-        torch.save(checkpoint, os.path.join(self.save_dir, fname))
+        torch.save(checkpoint, os.path.join(self.save_dir, _fname))
         self.replay_buffer.save(os.path.join(self.save_dir, "replay_buffer.pickle"))
-        print(f"checkpoint saved at {os.path.join(self.save_dir, fname)}")
+        print(f"checkpoint saved at {os.path.join(self.save_dir, _fname)}")
 
     def load_weights(self, best=True, load_buffer=True):
         '''
@@ -260,7 +263,7 @@ class DDPG:
         else:
             raise OSError("Checkpoint file not found.")    
 
-    def learn_one_trial(self, timesteps):
+    def learn_one_trial(self, timesteps, trial_num):
         state, ep_ret, ep_len = self.env.reset(), 0, 0
         episode = 0
         for timestep in tqdm(range(timesteps)):
@@ -309,7 +312,7 @@ class DDPG:
                         print("Best mean reward: {:.2f} - Last mean reward per episode: {:.2f}".format(self.best_mean_reward, mean_reward))
 
                         self.best_mean_reward = mean_reward
-                        self.save_weights(best=True)
+                        self.save_weights(fname=f"best_{trial_num}")
                     
                     if self.best_mean_reward >= self.env.spec.reward_threshold:
                         print("Solved Environment, stopping iteration...")
@@ -325,8 +328,13 @@ class DDPG:
         Args:
             timesteps (int): number of timesteps to train for
         '''
+        best_reward_trial = -np.inf
         for trial in range(num_trials):
-            self.learn_one_trial(timesteps)
+            self.learn_one_trial(timesteps, trial+1)
+            
+            if self.best_mean_reward > best_reward_trial:
+                best_reward_trial = self.best_mean_reward
+                self.save_weights(best=True)
 
             self.logger.reset()
             self.reinit_network()

@@ -254,22 +254,25 @@ class TRPO:
             v_loss.backward()
             self.v_optimizer.step()
 
-    def save_weights(self, best=True):
+    def save_weights(self, best=False, fname=None):
         '''
         save the pytorch model weights of critic and actor networks
         '''
-        if best:
-            fname = "best.pth"
+        if fname is not None:
+            _fname = fname
+        elif best:
+            _fname = "best.pth"
         else:
-            fname = "model_weights.pth"
+            _fname = "model_weights.pth"
+
         print('saving checkpoint...')
         checkpoint = {
             'v': self.ac.v.state_dict(),
             'pi': self.ac.pi.state_dict(),
             'v_optimizer': self.v_optimizer.state_dict()
         }
-        torch.save(checkpoint, os.path.join(self.save_dir, fname))
-        print(f"checkpoint saved at {os.path.join(self.save_dir, fname)}")
+        torch.save(checkpoint, os.path.join(self.save_dir, _fname))
+        print(f"checkpoint saved at {os.path.join(self.save_dir, _fname)}")
 
     def load_weights(self, best=True):
         '''
@@ -293,7 +296,7 @@ class TRPO:
         else:
             raise OSError("Checkpoint file not found.")    
 
-    def learn_one_trial(self, timesteps):
+    def learn_one_trial(self, timesteps, trial_num):
         ep_rets = []
         epochs = int((timesteps/self.steps_per_epoch) + 0.5)
         print("Rounded off to {} epochs with {} steps per epoch, total {} timesteps".format(epochs, self.steps_per_epoch, epochs*self.steps_per_epoch))
@@ -338,7 +341,7 @@ class TRPO:
                             print("Best mean reward: {:.2f} - Last mean reward per episode: {:.2f}".format(self.best_mean_reward, mean_reward))
 
                             self.best_mean_reward = mean_reward
-                            self.save_weights(best=True)
+                            self.save_weights(fname=f"best_{trial_num}")
                         
                         if self.best_mean_reward >= self.env.spec.reward_threshold:
                             print("Solved Environment, stopping iteration...")
@@ -349,9 +352,20 @@ class TRPO:
             self.logger.dump()
             
     def learn(self, timesteps, num_trials=1):
+        '''
+        Function to learn using TRPO.
+        Args:
+            timesteps (int): number of timesteps to train for
+            num_trials (int): Number of times to train the agent
+        '''
+        best_reward_trial = -np.inf
         for trial in range(num_trials):
             self.learn_one_trial(timesteps)
             
+            if self.best_mean_reward > best_reward_trial:
+                best_reward_trial = self.best_mean_reward
+                self.save_weights(best=True)
+
             self.logger.reset()
             self.reinit_network()
             print()
