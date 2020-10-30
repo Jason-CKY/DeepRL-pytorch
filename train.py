@@ -32,7 +32,7 @@ def main():
         with open(config_path, 'r') as f:
             model_kwargs = json.load(f)
 
-        env_fn = lambda: Normalize_Observation(gym.make(args.env))
+        env_fn = lambda: gym.make(args.env)
         model = DDPG(env_fn, save_dir, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
         with open(os.path.join(save_dir, "ddpg_config.json"), "w") as f:
             f.write(json.dumps(model_kwargs, indent=4))
@@ -47,7 +47,7 @@ def main():
         with open(config_path, 'r') as f:
             model_kwargs = json.load(f)
 
-        env_fn = lambda: Normalize_Observation(gym.make(args.env))
+        env_fn = lambda: gym.make(args.env)
         model = TD3(env_fn, save_dir, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
         with open(os.path.join(save_dir, "td3_config.json"), "w") as f:
             f.write(json.dumps(model_kwargs, indent=4))        

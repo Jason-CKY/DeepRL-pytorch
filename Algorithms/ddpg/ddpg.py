@@ -312,7 +312,7 @@ class DDPG:
                         print("Best mean reward: {:.2f} - Last mean reward per episode: {:.2f}".format(self.best_mean_reward, mean_reward))
 
                         self.best_mean_reward = mean_reward
-                        self.save_weights(fname=f"best_{trial_num}")
+                        self.save_weights(fname=f"best_{trial_num}.pth")
                     
                     if self.best_mean_reward >= self.env.spec.reward_threshold:
                         print("Solved Environment, stopping iteration...")

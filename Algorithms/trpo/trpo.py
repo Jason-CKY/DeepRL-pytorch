@@ -341,7 +341,7 @@ class TRPO:
                             print("Best mean reward: {:.2f} - Last mean reward per episode: {:.2f}".format(self.best_mean_reward, mean_reward))
 
                             self.best_mean_reward = mean_reward
-                            self.save_weights(fname=f"best_{trial_num}")
+                            self.save_weights(fname=f"best_{trial_num}.pth")
                         
                         if self.best_mean_reward >= self.env.spec.reward_threshold:
                             print("Solved Environment, stopping iteration...")
@@ -360,8 +360,8 @@ class TRPO:
         '''
         best_reward_trial = -np.inf
         for trial in range(num_trials):
-            self.learn_one_trial(timesteps)
-            
+            self.learn_one_trial(timesteps, trial+1)
+
             if self.best_mean_reward > best_reward_trial:
                 best_reward_trial = self.best_mean_reward
                 self.save_weights(best=True)
