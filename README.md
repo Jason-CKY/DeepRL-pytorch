@@ -1,6 +1,6 @@
 # Deep RL policies on Pybullet Environments
 
-This repo is an implementation of various deep RL algorithm on pybullet robotic environments.
+This repo is a pytorch implementation of various deep RL algorithms, trained and evaluated on pybullet robotic environments.
 
 ## Implemented Algorithms:
 
@@ -60,98 +60,60 @@ This repo is an implementation of various deep RL algorithm on pybullet robotic 
         <tr>
             <td> CartPole Continuous BulletEnv-v0 </td>
             <td> <img src = 'Model_Weights\CartPoleContinuousBulletEnv-v0\comparison.png'> </td>
-            <td><img src = 'Model_Weights\CartPoleContinuousBulletEnv-v0\ppo\recording.gif'> </td>
+            <td><img src = 'Model_Weights\CartPoleContinuousBulletEnv-v0\ddpg\recording.gif'> </td>
         </tr>
         <tr>
-            <td> Inverted Pendulum BulletEnv-v0 </td>
-            <td> <img src = 'Model_Weights\InvertedPendulumBulletEnv-v0\comparison.png'> </td>
-            <td><img src = 'Model_Weights\InvertedPendulumBulletEnv-v0\ppo\recording.gif'> </td>
-        </tr>
-        <tr>
-            <td> Inverted Double Pendulum BulletEnv-v0 </td>
-            <td> <img src = 'Model_Weights\InvertedDoublePendulumBulletEnv-v0\comparison.png'> </td>
-            <td><img src = 'Model_Weights\InvertedDoublePendulumBulletEnv-v0\td3\recording.gif'> </td>
+            <td> Hopper BulletEnv-v0 </td>
+            <td> <img src = 'Model_Weights\HopperBulletEnv-v0\comparison.png'> </td>
+            <td><img src = 'Model_Weights\HopperBulletEnv-v0\td3\recording.gif'> </td>
         </tr>
         <tr>
             <td> AntBulletEnv-v0 </td>
             <td> <img src = 'Model_Weights\AntBulletEnv-v0\comparison.png'> </td>
-            <td><img src = 'Model_Weights\AntBulletEnv-v0\trpo\recording.gif'> </td>
+            <td><img src = 'Model_Weights\AntBulletEnv-v0\td3\recording.gif'> </td>
         </tr>
         <tr>
             <td> HalfCheetahBulletEnv-v0 </td>
             <td> <img src = 'Model_Weights\HalfCheetahBulletEnv-v0\comparison.png'> </td>
-            <td><img src = 'Model_Weights\HalfCheetahBulletEnv-v0\trpo\recording.gif'> </td>
+            <td><img src = 'Model_Weights\HalfCheetahBulletEnv-v0\ddpg\recording.gif'> </td>
         </tr>
     </tbody>
 </table>
 
-## Results comparing with Stable-Baselines3 agents
+## How to use
 
-<table>
-    <thead>
-        <tr>
-            <th>Environment</th>
-            <th> Algorithm </th>
-            <th> Learning Curve </th>
-            <th> Episode Recording </th>
-        </tr>
-    </thead>
-    <tbody>
-        <tr>
-            <td rowspan=2> CartPole Continuous BulletEnv-v0 </td>
-            <td> DDPG </td>
-            <td> <img src = 'Model_Weights\CartPoleContinuousBulletEnv-v0\ddpg\comparison.png'> </td>
-            <td><img src = 'Model_Weights\CartPoleContinuousBulletEnv-v0\ddpg\recording.gif'> </td>
-        </tr>
-        <tr>
-            <td> TD3 </td>
-            <td> <img src = 'Model_Weights\CartPoleContinuousBulletEnv-v0\td3\comparison.png'> </td>
-            <td><img src = 'Model_Weights\CartPoleContinuousBulletEnv-v0\td3\recording.gif'> </td>
-        </tr>
-        <tr>
-            <td rowspan=2> Inverted Pendulum BulletEnv-v0 </td>
-            <td>DDPG</td>
-            <td> <img src = 'Model_Weights\InvertedPendulumBulletEnv-v0\ddpg\comparison.png'> </td>
-            <td><img src = 'Model_Weights\InvertedPendulumBulletEnv-v0\ddpg\recording.gif'></td>
-        </tr>
-        <tr>
-            <td>TD3</td>
-            <td> <img src = 'Model_Weights\InvertedPendulumBulletEnv-v0\td3\comparison.png'> </td>
-            <td><img src = 'Model_Weights\InvertedPendulumBulletEnv-v0\td3\recording.gif'></td>
-        </tr>
-        <tr>
-            <td rowspan=2> Inverted Double Pendulum BulletEnv-v0 </td>
-            <td> DDPG </td>
-            <td> <img src = 'Model_Weights\InvertedDoublePendulumBulletEnv-v0\ddpg\comparison.png'> </td>
-            <td><img src = 'Model_Weights\InvertedDoublePendulumBulletEnv-v0\ddpg\recording.gif'></td>
-        </tr>
-        <tr>
-            <td> TD3 </td>
-            <td> <img src = 'Model_Weights\InvertedDoublePendulumBulletEnv-v0\td3\comparison.png'> </td>
-            <td><img src = 'Model_Weights\InvertedDoublePendulumBulletEnv-v0\td3\recording.gif'></td>
-        </tr>
-        <tr>
-            <td rowspan=2> AntBullet Env-v0 </td>
-            <td> DDPG </td>
-            <td><img src = 'Model_Weights\AntBulletEnv-v0\ddpg\comparison.png'></td>
-            <td><img src = 'Model_Weights\AntBulletEnv-v0\ddpg\recording.gif'></td>
-        </tr>
-        <tr>
-            <td> TD3 </td>
-            <td><img src = 'Model_Weights\AntBulletEnv-v0\td3\comparison.png'></td>
-            <td><img src = 'Model_Weights\AntBulletEnv-v0\td3\recording.gif'></td>
-        </tr>
-        <tr>
-            <td rowspan=2> HalfCheetah BulletEnv-v0 </td>
-            <td> DDPG </td>
-            <td> <img src = 'Model_Weights\HalfCheetahBulletEnv-v0\ddpg\comparison.png'> </td>
-            <td><img src = 'Model_Weights\HalfCheetahBulletEnv-v0\ddpg\recording.gif'></td>
-        </tr>
-        <tr>
-            <td> TD3 </td>
-            <td> <img src = 'Model_Weights\HalfCheetahBulletEnv-v0\td3\comparison.png'> </td>
-            <td><img src = 'Model_Weights\HalfCheetahBulletEnv-v0\td3\recording.gif'></td>
-        </tr>
-    </tbody>
-</table>
+### Training model for openai gym environment
+* Clone this repo
+* Edit training parameters in ./Algorithms/<algo>/config.json
+```
+python train.py
+usage: train.py [-h] [--env ENV] [--agent AGENT] --timesteps TIMESTEPS
+                [--seed SEED] [--num_trials NUM_TRIALS]
 
+optional arguments:
+  -h, --help            show this help message and exit
+  --env ENV             environment_id
+  --agent AGENT         specify type of agent (e.g. DDPG/TRPO/PPO/random)
+  --timesteps TIMESTEPS
+                        specify number of timesteps to train for
+  --seed SEED           seed number for reproducibility
+  --num_trials NUM_TRIALS
+                        Number of times to train the algo
+```
+
+### Testing trained model performance
+```
+python test.py
+usage: test.py [-h] [--env ENV] [--agent AGENT] [--render] [--gif]
+               [--timesteps TIMESTEPS] [--seed SEED]
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --env ENV             environment_id
+  --agent AGENT         specify type of agent (e.g. DDPG/TRPO/PPO/random)
+  --render              if true, display human renders of the environment
+  --gif                 if true, make gif of the trained agent
+  --timesteps TIMESTEPS
+                        specify number of timesteps to train for
+  --seed SEED           seed number for reproducibility
+```

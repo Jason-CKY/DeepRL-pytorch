@@ -1,0 +1,21 @@
+{
+    "ac_kwargs": {
+        "hidden_sizes": [
+            256,
+            256
+        ]
+    },
+    "replay_size": 1000000.0,
+    "gamma": 0.99,
+    "tau": 0.995,
+    "pi_lr": 0.001,
+    "q_lr": 0.001,
+    "batch_size": 100,
+    "start_steps": 1000,
+    "update_after": 1000,
+    "update_every": 50,
+    "act_noise": 0.1,
+    "max_ep_len": 1000,
+    "save_freq": 1,
+    "policy_delay": 2
+}

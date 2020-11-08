@@ -1,0 +1,24 @@
+{
+    "ac_kwargs": {
+        "v_hidden_sizes": [
+            128,
+            64
+        ],
+        "pi_hidden_sizes": [
+            64,
+            32
+        ]
+    },
+    "steps_per_epoch": 4000,
+    "gamma": 0.99,
+    "delta": 0.01,
+    "vf_lr": 0.001,
+    "train_v_iters": 80,
+    "damping_coeff": 0.1,
+    "cg_iters": 10,
+    "backtrack_iters": 10,
+    "backtrack_coeff": 0.8,
+    "lam": 0.97,
+    "max_ep_len": 2048,
+    "save_freq": 10
+}
