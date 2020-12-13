@@ -7,6 +7,7 @@ import argparse
 import os
 import imageio
 
+from Wrappers.normalize_observation import Normalize_Observation
 from Algorithms.ddpg.core import MLPActorCritic
 from Algorithms.ddpg.replay_buffer import ReplayBuffer
 from Logger.logger import Logger
@@ -64,7 +65,7 @@ class DDPG:
         torch.manual_seed(seed)
         np.random.seed(seed)
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.env, self.test_env = env_fn(), env_fn()
+        self.env = env_fn()
 
         # Action Limit for clamping
         self.act_limit = self.env.action_space.high[0]
@@ -204,20 +205,24 @@ class DDPG:
         
         Used to measure how well the agent is doing.
         '''
+        self.env.training=False
         for i in range(self.num_test_episodes):
-            state, done, ep_ret, ep_len = self.test_env.reset(), False, 0, 0
+            state, done, ep_ret, ep_len = self.env.reset(), False, 0, 0
             while not (done or (ep_len==self.max_ep_len)):
                 # Take deterministic action with 0 noise added
-                state, reward, done, _ = self.test_env.step(self.get_action(state, 0))
+                state, reward, done, _ = self.env.step(self.get_action(state, 0))
                 ep_ret += reward
                 ep_len += 1
             self.logger.store(TestEpRet=ep_ret, TestEpLen=ep_len)
+        self.env.training=True
 
     def save_weights(self, best=False, fname=None):
         '''
         save the pytorch model weights of ac and ac_targ
+        as well as pickling the environment to preserve any env parameters like normalisation params
         Args:
-
+            best(bool): if true, save it as best.pth
+            fname(string): if specified, save it as <fname>
         '''
         if fname is not None:
             _fname = fname
@@ -235,6 +240,7 @@ class DDPG:
         }
         torch.save(checkpoint, os.path.join(self.save_dir, _fname))
         self.replay_buffer.save(os.path.join(self.save_dir, "replay_buffer.pickle"))
+        self.env.save(os.path.join(self.save_dir, "env.pickle"))
         print(f"checkpoint saved at {os.path.join(self.save_dir, _fname)}")
 
     def load_weights(self, best=True, load_buffer=True):
@@ -259,6 +265,11 @@ class DDPG:
             self.pi_optimizer.load_state_dict(checkpoint['pi_optimizer'])
             self.q_optimizer.load_state_dict(checkpoint['q_optimizer'])
 
+            env_pkl_path = os.path.join(self.save_dir, "env.pickle")
+            if os.path.isfile(env_pkl_path):
+                self.env = Normalize_Observation.load(env_pkl_path)
+                print("Environment loaded")
+            
             print('checkpoint loaded at {}'.format(checkpoint_path))
         else:
             raise OSError("Checkpoint file not found.")    
@@ -328,6 +339,7 @@ class DDPG:
         Args:
             timesteps (int): number of timesteps to train for
         '''
+        self.env.training=True
         best_reward_trial = -np.inf
         for trial in range(num_trials):
             self.learn_one_trial(timesteps, trial+1)
@@ -352,37 +364,39 @@ class DDPG:
             Ep_Ret (int): Total reward from the episode
             Ep_Len (int): Total length of the episode in terms of timesteps
         '''
+        self.env.training=False
         if render:
-            self.test_env.render('human')
-        state, done, ep_ret, ep_len = self.test_env.reset(), False, 0, 0
+            self.env.render('human')
+        state, done, ep_ret, ep_len = self.env.reset(), False, 0, 0
         img = []
         if record:
-            img.append(self.test_env.render('rgb_array'))
+            img.append(self.env.render('rgb_array'))
 
         if timesteps is not None:
             for i in range(timesteps):
                 # Take deterministic action with 0 noise added
-                state, reward, done, _ = self.test_env.step(self.get_action(state, 0))
+                state, reward, done, _ = self.env.step(self.get_action(state, 0))
                 if record:
-                    img.append(self.test_env.render('rgb_array'))
+                    img.append(self.env.render('rgb_array'))
                 else:
-                    self.test_env.render()
+                    self.env.render()
                 ep_ret += reward
                 ep_len += 1                
         else:
             while not (done or (ep_len==self.max_ep_len)):
                 # Take deterministic action with 0 noise added
-                state, reward, done, _ = self.test_env.step(self.get_action(state, 0))
+                state, reward, done, _ = self.env.step(self.get_action(state, 0))
                 if record:
-                    img.append(self.test_env.render('rgb_array'))
+                    img.append(self.env.render('rgb_array'))
                 else:
-                    self.test_env.render()
+                    self.env.render()
                 ep_ret += reward
                 ep_len += 1
 
         if record:
             imageio.mimsave(f'{os.path.join(self.save_dir, "recording.gif")}', [np.array(img) for i, img in enumerate(img) if i%2 == 0], fps=29)
 
+        self.env.training=True
         return ep_ret, ep_len      
 
 def parse_arguments():

@@ -1,7 +1,9 @@
 __pycache__
 .vscode
+RLBench
 testcode.py
 setup.bat
+Model_Weights/reach_target-vision-v0
 Model_Weights/**/*.pickle
 Model_Weights/**/*.pth
 Stable_Baselines/logs/**/*.zip

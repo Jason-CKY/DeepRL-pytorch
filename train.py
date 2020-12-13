@@ -17,11 +17,17 @@ def parse_arguments():
     parser.add_argument('--timesteps', type=int, required=True, help='specify number of timesteps to train for') 
     parser.add_argument('--seed', type=int, default=0, help='seed number for reproducibility')
     parser.add_argument('--num_trials', type=int, default=1, help='Number of times to train the algo')
+    parser.add_argument('--normalize', action='store_true', help='if true, normalize environment observations')
     return parser.parse_args()
 
 def main():
     args = parse_arguments()
     
+    if args.normalize:
+        env_fn = lambda: Normalize_Observation(gym.make(args.env))
+    else:
+        env_fn = lambda: gym.make(args.env)
+
     if args.agent.lower() == 'ddpg':
         from Algorithms.ddpg.ddpg import DDPG
         config_path = os.path.join("Algorithms", "ddpg", "ddpg_config.json") 
@@ -32,7 +38,6 @@ def main():
         with open(config_path, 'r') as f:
             model_kwargs = json.load(f)
 
-        env_fn = lambda: gym.make(args.env)
         model = DDPG(env_fn, save_dir, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
         with open(os.path.join(save_dir, "ddpg_config.json"), "w") as f:
             f.write(json.dumps(model_kwargs, indent=4))
@@ -47,7 +52,6 @@ def main():
         with open(config_path, 'r') as f:
             model_kwargs = json.load(f)
 
-        env_fn = lambda: gym.make(args.env)
         model = TD3(env_fn, save_dir, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
         with open(os.path.join(save_dir, "td3_config.json"), "w") as f:
             f.write(json.dumps(model_kwargs, indent=4))        
@@ -62,7 +66,6 @@ def main():
         with open(config_path, 'r') as f:
             model_kwargs = json.load(f)
         
-        env_fn = lambda: Normalize_Observation(gym.make(args.env))
         model = TRPO(env_fn, save_dir, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
         with open(os.path.join(save_dir, "trpo_config.json"), "w") as f:
             f.write(json.dumps(model_kwargs, indent=4))    
@@ -77,7 +80,6 @@ def main():
         with open(config_path, 'r') as f:
             model_kwargs = json.load(f)
 
-        env_fn = lambda: Normalize_Observation(gym.make(args.env))
         model = PPO(env_fn, save_dir, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
         with open(os.path.join(save_dir, "ppo_config.json"), "w") as f:
             f.write(json.dumps(model_kwargs, indent=4))   

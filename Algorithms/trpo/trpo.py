@@ -7,6 +7,7 @@ import argparse
 import os
 import imageio
 
+from Wrappers.normalize_observation import Normalize_Observation
 from Algorithms.trpo.core import MLPActorCritic
 from Algorithms.trpo.gae_buffer import GAEBuffer
 from Logger.logger import Logger
@@ -74,7 +75,7 @@ class TRPO:
         torch.manual_seed(seed)
         np.random.seed(seed)
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.env, self.test_env = env_fn(), env_fn()
+        self.env = env_fn()
         self.vf_lr = vf_lr
         self.steps_per_epoch = steps_per_epoch # if steps_per_epoch > self.env.spec.max_episode_steps else self.env.spec.max_episode_steps        
         self.max_ep_len = max_ep_len
@@ -272,6 +273,7 @@ class TRPO:
             'v_optimizer': self.v_optimizer.state_dict()
         }
         torch.save(checkpoint, os.path.join(self.save_dir, _fname))
+        self.env.save(os.path.join(self.save_dir, "env.pickle"))
         print(f"checkpoint saved at {os.path.join(self.save_dir, _fname)}")
 
     def load_weights(self, best=True):
@@ -291,6 +293,11 @@ class TRPO:
             self.ac.v.load_state_dict(checkpoint['v'])
             self.ac.pi.load_state_dict(checkpoint['pi'])
             self.v_optimizer.load_state_dict(checkpoint['v_optimizer'])
+
+            env_pkl_path = os.path.join(self.save_dir, "env.pickle")
+            if os.path.isfile(env_pkl_path):
+                self.env = Normalize_Observation.load(env_pkl_path)
+                print("Environment loaded")
 
             print('checkpoint loaded at {}'.format(checkpoint_path))
         else:
@@ -358,6 +365,7 @@ class TRPO:
             timesteps (int): number of timesteps to train for
             num_trials (int): Number of times to train the agent
         '''
+        self.env.training = True
         best_reward_trial = -np.inf
         for trial in range(num_trials):
             self.learn_one_trial(timesteps, trial+1)
@@ -382,36 +390,38 @@ class TRPO:
             Ep_Ret (int): Total reward from the episode
             Ep_Len (int): Total length of the episode in terms of timesteps
         '''
+        self.env.training = False
         if render:
-            self.test_env.render('human')
-        obs, done, ep_ret, ep_len = self.test_env.reset(), False, 0, 0
+            self.env.render('human')
+        obs, done, ep_ret, ep_len = self.env.reset(), False, 0, 0
         img = []
         if record:
-            img.append(self.test_env.render('rgb_array'))
+            img.append(self.env.render('rgb_array'))
 
         if timesteps is not None:
             for i in range(timesteps):
                 # Take stochastic action with policy network
                 action, _, _ = self.ac.step(torch.as_tensor(obs, dtype=torch.float32).to(self.device))
-                obs, reward, done, _ = self.test_env.step(action)
+                obs, reward, done, _ = self.env.step(action)
                 if record:
-                    img.append(self.test_env.render('rgb_array'))
+                    img.append(self.env.render('rgb_array'))
                 else:
-                    self.test_env.render()
+                    self.env.render()
                 ep_ret += reward
                 ep_len += 1                
         else:
             while not (done or (ep_len==self.max_ep_len)):
                 # Take stochastic action with policy network
                 action, _, _ = self.ac.step(torch.as_tensor(obs, dtype=torch.float32).to(self.device))
-                obs, reward, done, _ = self.test_env.step(action)
+                obs, reward, done, _ = self.env.step(action)
                 if record:
-                    img.append(self.test_env.render('rgb_array'))
+                    img.append(self.env.render('rgb_array'))
                 else:
-                    self.test_env.render()
+                    self.env.render()
                 ep_ret += reward
                 ep_len += 1
 
+        self.env.training = True
         if record:
             imageio.mimsave(f'{os.path.join(self.save_dir, "recording.gif")}', [np.array(img) for i, img in enumerate(img) if i%2 == 0], fps=29)
 

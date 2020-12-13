@@ -8,8 +8,8 @@ import imageio
 import numpy as np
 
 from Wrappers.normalize_observation import Normalize_Observation
-from stable_baselines3.common.cmd_util import make_vec_env
-from stable_baselines3.common.vec_env import VecNormalize
+# from stable_baselines3.common.cmd_util import make_vec_env
+# from stable_baselines3.common.vec_env import VecNormalize
 
 def random_test(env_fn, render=True, record_dir=None, timesteps=None):
     '''
@@ -69,6 +69,9 @@ def main():
     args = parse_arguments()
     if args.agent.lower() == 'random':
         save_dir = os.path.join("Model_Weights", args.env) if args.gif else None
+        if not os.path.isdir(save_dir):
+            os.makedirs(save_dir, exist_ok=True)
+
         random_test(lambda:gym.make(args.env), render=args.render, record_dir=save_dir, timesteps=args.timesteps)
         return
 
