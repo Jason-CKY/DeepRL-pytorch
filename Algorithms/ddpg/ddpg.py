@@ -93,7 +93,7 @@ class DDPG:
         self.gamma = gamma
         self.tau = tau
         self.act_noise = act_noise
-        self.obs_dim = self.env.observation_space.shape[0]
+        # self.obs_dim = self.env.observation_space.shape[0]
         self.act_dim = self.env.action_space.shape[0]
         self.num_test_episodes = num_test_episodes
         self.max_ep_len = self.env.spec.max_episode_steps if self.env.spec.max_episode_steps is not None else max_ep_len
@@ -267,7 +267,7 @@ class DDPG:
 
             env_pkl_path = os.path.join(self.save_dir, "env.pickle")
             if os.path.isfile(env_pkl_path):
-                self.env = Normalize_Observation.load(env_pkl_path)
+                self.env = self.env.__class__.load(env_pkl_path)
                 print("Environment loaded")
             
             print('checkpoint loaded at {}'.format(checkpoint_path))

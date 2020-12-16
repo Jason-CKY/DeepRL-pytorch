@@ -198,7 +198,7 @@ class PPO:
 
             env_pkl_path = os.path.join(self.save_dir, "env.pickle")
             if os.path.isfile(env_pkl_path):
-                self.env = Normalize_Observation.load(env_pkl_path)
+                self.env = self.env.__class__.load(env_pkl_path)
                 print("Environment loaded")
             print('checkpoint loaded at {}'.format(checkpoint_path))
         else:

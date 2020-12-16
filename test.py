@@ -67,6 +67,10 @@ def parse_arguments():
 
 def main():
     args = parse_arguments()
+
+    save_dir = os.path.join("Model_Weights", args.env, args.agent.lower())
+    config_path = os.path.join(save_dir, args.agent.lower() + "_config.json")
+
     if args.agent.lower() == 'random':
         save_dir = os.path.join("Model_Weights", args.env) if args.gif else None
         if not os.path.isdir(save_dir):
@@ -77,8 +81,6 @@ def main():
 
     elif args.agent.lower() == 'ddpg':
         from Algorithms.ddpg.ddpg import DDPG
-        save_dir = os.path.join("Model_Weights", args.env, "ddpg")
-        config_path = os.path.join(save_dir, "ddpg_config.json") 
         logger_kwargs = {
             "output_dir": save_dir
         }
@@ -89,8 +91,6 @@ def main():
         model.load_weights(load_buffer=False)
     elif args.agent.lower() == 'td3':
         from Algorithms.td3.td3 import TD3
-        save_dir = os.path.join("Model_Weights", args.env, "td3")
-        config_path = os.path.join(save_dir, "td3_config.json") 
         logger_kwargs = {
             "output_dir": save_dir
         }
@@ -101,8 +101,6 @@ def main():
         model.load_weights(load_buffer=False)
     elif args.agent.lower() == 'trpo':
         from Algorithms.trpo.trpo import TRPO
-        save_dir = os.path.join("Model_Weights", args.env, "trpo")
-        config_path = os.path.join(save_dir, "trpo_config.json") 
         logger_kwargs = {
             "output_dir": save_dir
         }
@@ -113,8 +111,6 @@ def main():
         model.load_weights()
     elif args.agent.lower() == 'ppo':
         from Algorithms.ppo.ppo import PPO
-        save_dir = os.path.join("Model_Weights", args.env, "ppo")
-        config_path = os.path.join(save_dir, "ppo_config.json") 
         logger_kwargs = {
             "output_dir": save_dir
         }

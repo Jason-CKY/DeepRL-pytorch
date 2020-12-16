@@ -3,7 +3,6 @@ import numpy as np
 import pickle
 from typing import Tuple
 
-K = n = Ex = Ex2 = 0.0
 class Running_Stat:
     '''
     Class to store variables required to compute 1st and 2nd order statistics
