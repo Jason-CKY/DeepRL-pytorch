@@ -50,12 +50,12 @@ def main():
         from Algorithms.ddpg.ddpg import DDPG
         if args.arch == 'mlp':
             from Algorithms.ddpg.core import MLPActorCritic
-            model_kwargs['actor_critic'] = MLPActorCritic
+            ac = MLPActorCritic
         elif args.arch == 'cnn':
             from Algorithms.ddpg.core import CNNActorCritic
-            model_kwargs['actor_critic'] = CNNActorCritic
+            ac = CNNActorCritic
 
-        model = DDPG(env_fn, save_dir, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
+        model = DDPG(env_fn, save_dir, actor_critic=ac, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
         with open(os.path.join(save_dir, "ddpg_config.json"), "w") as f:
             f.write(json.dumps(model_kwargs, indent=4))
 
