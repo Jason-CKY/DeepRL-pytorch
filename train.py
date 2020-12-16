@@ -40,14 +40,20 @@ def main():
 
     config_path = os.path.join("Algorithms", args.agent.lower(), args.agent.lower() + "_config_" + args.arch + ".json")
     save_dir = os.path.join("Model_Weights", args.env, args.agent.lower())
+    logger_kwargs = {
+        "output_dir": save_dir
+    }
+    with open(config_path, 'r') as f:
+        model_kwargs = json.load(f)
 
     if args.agent.lower() == 'ddpg':
         from Algorithms.ddpg.ddpg import DDPG
-        logger_kwargs = {
-            "output_dir": save_dir
-        }
-        with open(config_path, 'r') as f:
-            model_kwargs = json.load(f)
+        if args.arch == 'mlp':
+            from Algorithms.ddpg.core import MLPActorCritic
+            model_kwargs['actor_critic'] = MLPActorCritic
+        elif args.arch == 'cnn':
+            from Algorithms.ddpg.core import CNNActorCritic
+            model_kwargs['actor_critic'] = CNNActorCritic
 
         model = DDPG(env_fn, save_dir, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
         with open(os.path.join(save_dir, "ddpg_config.json"), "w") as f:
@@ -55,11 +61,6 @@ def main():
 
     elif args.agent.lower() == 'td3':
         from Algorithms.td3.td3 import TD3
-        logger_kwargs = {
-            "output_dir": save_dir
-        }
-        with open(config_path, 'r') as f:
-            model_kwargs = json.load(f)
 
         model = TD3(env_fn, save_dir, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
         with open(os.path.join(save_dir, "td3_config.json"), "w") as f:
@@ -67,11 +68,6 @@ def main():
     
     elif args.agent.lower() == 'trpo':
         from Algorithms.trpo.trpo import TRPO
-        logger_kwargs = {
-            "output_dir": save_dir
-        }
-        with open(config_path, 'r') as f:
-            model_kwargs = json.load(f)
         
         model = TRPO(env_fn, save_dir, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
         with open(os.path.join(save_dir, "trpo_config.json"), "w") as f:
@@ -79,11 +75,6 @@ def main():
 
     elif args.agent.lower() == 'ppo':
         from Algorithms.ppo.ppo import PPO
-        logger_kwargs = {
-            "output_dir": save_dir
-        }
-        with open(config_path, 'r') as f:
-            model_kwargs = json.load(f)
 
         model = PPO(env_fn, save_dir, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
         with open(os.path.join(save_dir, "ppo_config.json"), "w") as f:

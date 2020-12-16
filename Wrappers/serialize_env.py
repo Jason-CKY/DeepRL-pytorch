@@ -9,7 +9,14 @@ class Serialize_Env(gym.ObservationWrapper):
     '''
     def __init__(self, env, training=True):
         super(Serialize_Env, self).__init__(env)
-    
+
+    def reset(self, **kwargs):
+        observation = self.env.reset(**kwargs)
+        return self.observation(observation)
+
+    def observation(self, observation):
+        return observation
+
     def save(self, fname):
         with open(fname, 'wb') as f:
             pickle.dump(self, f)
