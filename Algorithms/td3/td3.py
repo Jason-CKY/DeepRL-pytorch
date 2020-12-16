@@ -353,7 +353,7 @@ class TD3:
                         print("Solved Environment, stopping iteration...")
                         return
 
-                self.evaluate_agent()
+                # self.evaluate_agent()
                 self.logger.dump()
 
     def learn(self, timesteps, num_trials=1):

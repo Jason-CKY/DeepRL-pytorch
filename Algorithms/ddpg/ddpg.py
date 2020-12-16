@@ -329,7 +329,7 @@ class DDPG:
                         print("Solved Environment, stopping iteration...")
                         return
 
-                self.evaluate_agent()
+                # self.evaluate_agent()
                 self.logger.dump()
         
 
