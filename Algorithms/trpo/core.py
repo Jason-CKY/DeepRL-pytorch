@@ -242,7 +242,7 @@ class CNNCritic(nn.Module):
             activation (nn.modules.activation): Activation function for each layer of MLP
         '''
         super().__init__()
-        self.v_cnn = cnn(obs_dim[2], conv_layer_sizes, activation, batchnorm=True)
+        self.v_cnn = cnn(obs_dim[0], conv_layer_sizes, activation, batchnorm=True)
         self.start_dim = self.calc_shape(obs_dim, self.v_cnn)
         self.v_mlp = mlp([self.start_dim] + list(hidden_sizes) + [1], activation)
 
@@ -251,7 +251,7 @@ class CNNCritic(nn.Module):
       Function to determine the shape of the data after the conv layers
       to determine how many neurons for the MLP.
       '''
-      H, W, C = obs_dim
+      C, H, W = obs_dim
       dummy_input = torch.randn(1, C, H, W)
       with torch.no_grad():
         cnn_out = cnn(dummy_input)
@@ -266,7 +266,7 @@ class CNNCritic(nn.Module):
         '''
         obs = self.v_cnn(obs)
         obs = obs.view(-1, self.start_dim)
-        v = self.q_mlp(obs)
+        v = self.v_mlp(obs)
         return torch.squeeze(v, -1)     # ensure v has the right shape
 
 class CNNCategoricalActor(Actor):
@@ -277,9 +277,9 @@ class CNNCategoricalActor(Actor):
         '''
         A Convolutional Neural Net for the Actor network for discrete outputs
         Network Architecture: (input) -> CNN -> MLP -> (output)
-        Assume input is in the shape: (128, 128, 3)
+        Assume input is in the shape: (3, 128, 128)
         Args:
-            obs_dim (tuple): observation dimension of the environment in the form of (H, W, C)
+            obs_dim (tuple): observation dimension of the environment in the form of (C, H, W)
             act_dim (int): action dimension of the environment
             conv_layer_sizes (list): list of 3-tuples consisting of (output_channel, kernel_size, stride)
                                     that describes the cnn architecture
@@ -289,7 +289,7 @@ class CNNCategoricalActor(Actor):
         '''
         super().__init__()
 
-        self.logits_cnn = cnn(obs_dim[2], conv_layer_sizes, activation, batchnorm=True)
+        self.logits_cnn = cnn(obs_dim[0], conv_layer_sizes, activation, batchnorm=True)
         self.start_dim = self.calc_shape(obs_dim, self.logits_cnn)
         mlp_sizes = [self.start_dim] + list(hidden_sizes) + [act_dim]
         self.logits_mlp = mlp(mlp_sizes, activation, output_activation=nn.Tanh)
@@ -301,7 +301,7 @@ class CNNCategoricalActor(Actor):
       Function to determine the shape of the data after the conv layers
       to determine how many neurons for the MLP.
       '''
-      H, W, C = obs_dim
+      C, H, W = obs_dim
       dummy_input = torch.randn(1, C, H, W)
       with torch.no_grad():
         cnn_out = cnn(dummy_input)
@@ -348,9 +348,9 @@ class CNNGaussianActor(Actor):
         '''
         A Convolutional Neural Net for the Actor network for Continuous outputs
         Network Architecture: (input) -> CNN -> MLP -> (output)
-        Assume input is in the shape: (128, 128, 3)
+        Assume input is in the shape: (3, 128, 128)
         Args:
-            obs_dim (tuple): observation dimension of the environment in the form of (H, W, C)
+            obs_dim (tuple): observation dimension of the environment in the form of (C, H, W)
             act_dim (int): action dimension of the environment
             conv_layer_sizes (list): list of 3-tuples consisting of (output_channel, kernel_size, stride)
                                     that describes the cnn architecture
@@ -362,7 +362,7 @@ class CNNGaussianActor(Actor):
         log_std = -0.5*np.ones(act_dim, dtype=np.float32)
         self.log_std = torch.nn.Parameter(torch.as_tensor(log_std))
         
-        self.mu_cnn = cnn(obs_dim[2], conv_layer_sizes, activation, batchnorm=True)
+        self.mu_cnn = cnn(obs_dim[0], conv_layer_sizes, activation, batchnorm=True)
         self.start_dim = self.calc_shape(obs_dim, self.mu_cnn)
         mlp_sizes = [self.start_dim] + list(hidden_sizes) + [act_dim]
         self.mu_mlp = mlp(mlp_sizes, activation, output_activation=nn.Tanh)
@@ -374,7 +374,7 @@ class CNNGaussianActor(Actor):
       Function to determine the shape of the data after the conv layers
       to determine how many neurons for the MLP.
       '''
-      H, W, C = obs_dim
+      C, H, W = obs_dim
       dummy_input = torch.randn(1, C, H, W)
       with torch.no_grad():
         cnn_out = cnn(dummy_input)
@@ -447,11 +447,14 @@ class CNNActorCritic(nn.Module):
         self.v = CNNCritic(obs_dim, conv_layer_sizes, v_hidden_sizes, activation).to(device)
     
     def step(self, obs):
+        if len(obs.shape) == 3:
+            obs = obs.unsqueeze(0)
         self.pi.eval()
         self.v.eval()
         with torch.no_grad():
             pi = self.pi._distribution(obs)
-            a = pi.sample()
+            a = pi.sample().squeeze()
+            # print(a.shape)
             logp_a = self.pi._log_prob_from_distribution(pi, a)
             v = self.v(obs).detach().cpu().numpy()
         return a.detach().cpu().numpy(), v, logp_a.cpu().detach().numpy()

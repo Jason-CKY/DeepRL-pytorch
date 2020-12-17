@@ -10,8 +10,8 @@ class Image_Wrapper(gym.ObservationWrapper):
     '''
     def __init__(self, env, training=True):
         super(Image_Wrapper, self).__init__(env)
-        shape = self.env.render('rgb_array').shape
-        self.observation_space = Box(0.0, 1.0, shape)
+        H, W, C = self.env.render('rgb_array').shape
+        self.observation_space = Box(0.0, 1.0, (C, H, W), dtype=np.float32)
 
     def reset(self, **kwargs):
         observation = self.env.reset(**kwargs)

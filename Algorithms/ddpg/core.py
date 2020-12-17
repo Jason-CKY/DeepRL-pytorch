@@ -135,10 +135,9 @@ class CNNActor(nn.Module):
         '''
         A Convolutional Neural Net for the Actor network
         Network Architecture: (input) -> CNN -> MLP -> (output)
-        Assume observation space is in the shape: (128, 128, 3), and observations collected is of the 
-        shape (3, 128, 128)
+        Assume observation space is in the shape: (3, 128, 128)
         Args:
-            obs_dim (tuple): observation dimension of the environment in the form of (H, W, C)
+            obs_dim (tuple): observation dimension of the environment in the form of (C, H, W)
             act_dim (int): action dimension of the environment
             conv_layer_sizes (list): list of 3-tuples consisting of (output_channel, kernel_size, stride)
                                     that describes the cnn architecture
@@ -148,7 +147,7 @@ class CNNActor(nn.Module):
         '''
         super().__init__()
         
-        self.pi_cnn = cnn(obs_dim[2], conv_layer_sizes, activation, batchnorm=True)
+        self.pi_cnn = cnn(obs_dim[0], conv_layer_sizes, activation, batchnorm=True)
         self.start_dim = self.calc_shape(obs_dim, self.pi_cnn)
         mlp_sizes = [self.start_dim] + list(hidden_sizes) + [act_dim]
         self.pi_mlp = mlp(mlp_sizes, activation, output_activation=nn.Tanh)
@@ -159,7 +158,7 @@ class CNNActor(nn.Module):
       Function to determine the shape of the data after the conv layers
       to determine how many neurons for the MLP.
       '''
-      H, W, C = obs_dim
+      C, H, W = obs_dim
       dummy_input = torch.randn(1, C, H, W)
       with torch.no_grad():
         cnn_out = cnn(dummy_input)
@@ -184,7 +183,7 @@ class CNNCritic(nn.Module):
         '''
         A Convolutional Neural Net for the Critic network
         Args:
-            obs_dim (tuple): observation dimension of the environment in the form of (H, W, C)
+            obs_dim (tuple): observation dimension of the environment in the form of (C, H, W)
             act_dim (int): action dimension of the environment
             conv_layer_sizes (list): list of 3-tuples consisting of (output_channel, kernel_size, stride)
                         that describes the cnn architecture
@@ -192,7 +191,7 @@ class CNNCritic(nn.Module):
             activation (nn.modules.activation): Activation function for each layer of MLP
         '''
         super().__init__()
-        self.q_cnn = cnn(obs_dim[2], conv_layer_sizes, activation, batchnorm=True)
+        self.q_cnn = cnn(obs_dim[0], conv_layer_sizes, activation, batchnorm=True)
         self.start_dim = self.calc_shape(obs_dim, self.q_cnn)
         self.q_mlp = mlp([self.start_dim + act_dim] + list(hidden_sizes) + [1], activation)
 
@@ -201,7 +200,7 @@ class CNNCritic(nn.Module):
       Function to determine the shape of the data after the conv layers
       to determine how many neurons for the MLP.
       '''
-      H, W, C = obs_dim
+      C, H, W = obs_dim
       dummy_input = torch.randn(1, C, H, W)
       with torch.no_grad():
         cnn_out = cnn(dummy_input)

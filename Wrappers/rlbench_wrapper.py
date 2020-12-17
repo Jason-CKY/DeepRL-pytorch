@@ -2,6 +2,7 @@ import gym
 import numpy as np
 import pickle
 from typing import Tuple
+from gym.spaces import Box
 
 class RLBench_Wrapper(gym.ObservationWrapper):
     '''
@@ -19,7 +20,12 @@ class RLBench_Wrapper(gym.ObservationWrapper):
         '''
         super(RLBench_Wrapper, self).__init__(env)
         self.view = view
-        self.observation_space = self.observation_space[view]
+        if len(self.observation_space[view].shape) == 3:
+            # swap (128, 128, 3) into (3, 128, 128) for torch input
+            H, W, C = self.observation_space[view].shape
+            self.observation_space = Box(0.0, 1.0, (C, H, W), dtype=np.float32)
+        else:
+            self.observation_space = self.observation_space[view]
 
     def reset(self, **kwargs):
         observation = self.env.reset(**kwargs)
