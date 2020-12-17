@@ -7,6 +7,8 @@ class RLBench_Wrapper(gym.ObservationWrapper):
     '''
     Observation Wrapper for the RLBench environment to only output 1 of the 
     camera views during training/testing instead of a dictionary of all camera views
+    Observation space is in the shape (128, 128, 3), while actual observations are tweaked to be
+    of the shape (3, 128, 128) for ease of conversion into tensor
     '''
     def __init__(self, env, view):
         '''
@@ -24,13 +26,11 @@ class RLBench_Wrapper(gym.ObservationWrapper):
         return self.observation(observation)
 
     def observation(self, observation):
-        return observation[self.view]
+        return observation[self.view].transpose([2, 0, 1])
     
     def save(self, fname):
-        with open(fname, 'wb') as f:
-            pickle.dump(self, f)
+        return
 
-    @classmethod
-    def load(cls, filename):
-        with open(filename, 'rb') as f:
-            return pickle.load(f)
+    # @classmethod
+    def load(self, filename):
+        return

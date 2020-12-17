@@ -8,7 +8,7 @@ import os
 import imageio
 
 from Wrappers.normalize_observation import Normalize_Observation
-from Algorithms.td3.core import MLPActorCritic
+from Algorithms.td3.core import MLPActorCritic, CNNActorCritic
 from Algorithms.td3.replay_buffer import ReplayBuffer
 from Logger.logger import Logger
 from copy import deepcopy
@@ -217,8 +217,10 @@ class TD3:
         '''
         self.ac.eval()
         self.ac_targ.eval()
+        if self.actor_critic == CNNActorCritic:
+            obs = [obs]
         obs = torch.as_tensor(obs, dtype=torch.float32).to(self.device)
-        action = self.ac.act(obs)
+        action = self.ac.act(obs).squeeze()
         action += noise_scale*np.random.randn(self.act_dim)
         return np.clip(action, -self.act_limit, self.act_limit)
 
@@ -262,7 +264,7 @@ class TD3:
         }
         torch.save(checkpoint, os.path.join(self.save_dir, _fname))
         self.replay_buffer.save(os.path.join(self.save_dir, "replay_buffer.pickle"))
-        self.env.save(os.path.join(self.save_dir, "env.pickle"))
+        self.env.save(os.path.join(self.save_dir, "env.json"))
         print(f"checkpoint saved at {os.path.join(self.save_dir, _fname)}")
 
     def load_weights(self, best=True, load_buffer=True):
@@ -287,9 +289,9 @@ class TD3:
             self.pi_optimizer.load_state_dict(checkpoint['pi_optimizer'])
             self.q_optimizer.load_state_dict(checkpoint['q_optimizer'])
             
-            env_pkl_path = os.path.join(self.save_dir, "env.pickle")
-            if os.path.isfile(env_pkl_path):
-                self.env = self.env.__class__.load(env_pkl_path)
+            env_path = os.path.join(self.save_dir, "env.json")
+            if os.path.isfile(env_path):
+                self.env = self.env.load(env_path)
                 print("Environment loaded")
 
             print('checkpoint loaded at {}'.format(checkpoint_path))
@@ -349,7 +351,7 @@ class TD3:
                         self.best_mean_reward = mean_reward
                         self.save_weights(fname=f"best_{trial_num}.pth")
                     
-                    if self.best_mean_reward >= self.env.spec.reward_threshold:
+                    if self.env.spec.reward_threshold is not None and self.best_mean_reward >= self.env.spec.reward_threshold:
                         print("Solved Environment, stopping iteration...")
                         return
 

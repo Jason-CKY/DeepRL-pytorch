@@ -8,8 +8,8 @@ import os
 import imageio
 
 from Wrappers.normalize_observation import Normalize_Observation
-from Algorithms.trpo.core import MLPActorCritic
-from Algorithms.trpo.gae_buffer import GAEBuffer
+from Algorithms.ppo.core import MLPActorCritic, CNNActorCritic
+from Algorithms.ppo.gae_buffer import GAEBuffer
 from Logger.logger import Logger
 from copy import deepcopy
 from torch import optim
@@ -173,7 +173,7 @@ class PPO:
             'v_optimizer': self.v_optimizer.state_dict(),
             'pi_optimizer': self.pi_optimizer.state_dict()
         }
-        self.env.save(os.path.join(self.save_dir, "env.pickle"))
+        self.env.save(os.path.join(self.save_dir, "env.json"))
         torch.save(checkpoint, os.path.join(self.save_dir, _fname))
         print(f"checkpoint saved at {os.path.join(self.save_dir, _fname)}")
 
@@ -196,9 +196,9 @@ class PPO:
             self.v_optimizer.load_state_dict(checkpoint['v_optimizer'])
             self.pi_optimizer.load_state_dict(checkpoint['pi_optimizer'])
 
-            env_pkl_path = os.path.join(self.save_dir, "env.pickle")
-            if os.path.isfile(env_pkl_path):
-                self.env = self.env.__class__.load(env_pkl_path)
+            env_path = os.path.join(self.save_dir, "env.json")
+            if os.path.isfile(env_path):
+                self.env = self.env.load(env_path)
                 print("Environment loaded")
             print('checkpoint loaded at {}'.format(checkpoint_path))
         else:
@@ -251,7 +251,7 @@ class PPO:
                             self.best_mean_reward = mean_reward
                             self.save_weights(fname=f"best_{trial_num}.pth")
                         
-                        if self.best_mean_reward >= self.env.spec.reward_threshold:
+                        if self.env.spec.reward_threshold is not None and self.best_mean_reward >= self.env.spec.reward_threshold:
                             print("Solved Environment, stopping iteration...")
                             return
 

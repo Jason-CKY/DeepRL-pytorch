@@ -10,6 +10,7 @@ from tqdm import tqdm
 from Wrappers.normalize_observation import Normalize_Observation
 from Wrappers.serialize_env import Serialize_Env
 from Wrappers.rlbench_wrapper import RLBench_Wrapper
+from Wrappers.image_learning import Image_Wrapper
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
@@ -22,6 +23,7 @@ def parse_arguments():
     parser.add_argument('--num_trials', type=int, default=1, help='Number of times to train the algo')
     parser.add_argument('--normalize', action='store_true', help='if true, normalize environment observations')
     parser.add_argument('--rlbench', action='store_true', help='if true, use rlbench environment wrappers')
+    parser.add_argument('--image', action='store_true', help='if true, use rlbench environment wrappers')
 
     return parser.parse_args()
 
@@ -35,9 +37,11 @@ def main():
             env_fn = lambda: RLBench_Wrapper(gym.make(args.env), 'wrist_rgb')
     elif args.normalize:
         env_fn = lambda: Normalize_Observation(gym.make(args.env))
+    elif args.image:
+        env_fn = lambda: Image_Wrapper(gym.make(args.env))
     else:
         env_fn = lambda: Serialize_Env(gym.make(args.env))
-
+        
     config_path = os.path.join("Algorithms", args.agent.lower(), args.agent.lower() + "_config_" + args.arch + ".json")
     save_dir = os.path.join("Model_Weights", args.env, args.agent.lower())
     logger_kwargs = {
@@ -61,22 +65,40 @@ def main():
 
     elif args.agent.lower() == 'td3':
         from Algorithms.td3.td3 import TD3
+        if args.arch == 'mlp':
+            from Algorithms.td3.core import MLPActorCritic
+            ac = MLPActorCritic
+        elif args.arch == 'cnn':
+            from Algorithms.td3.core import CNNActorCritic
+            ac = CNNActorCritic
 
-        model = TD3(env_fn, save_dir, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
+        model = TD3(env_fn, save_dir, actor_critic=ac, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
         with open(os.path.join(save_dir, "td3_config.json"), "w") as f:
             f.write(json.dumps(model_kwargs, indent=4))        
     
     elif args.agent.lower() == 'trpo':
         from Algorithms.trpo.trpo import TRPO
-        
-        model = TRPO(env_fn, save_dir, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
+        if args.arch == 'mlp':
+            from Algorithms.trpo.core import MLPActorCritic
+            ac = MLPActorCritic
+        elif args.arch == 'cnn':
+            from Algorithms.trpo.core import CNNActorCritic
+            ac = CNNActorCritic
+
+        model = TRPO(env_fn, save_dir, actor_critic=ac, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
         with open(os.path.join(save_dir, "trpo_config.json"), "w") as f:
             f.write(json.dumps(model_kwargs, indent=4))    
 
     elif args.agent.lower() == 'ppo':
         from Algorithms.ppo.ppo import PPO
+        if args.arch == 'mlp':
+            from Algorithms.ppo.core import MLPActorCritic
+            ac = MLPActorCritic
+        elif args.arch == 'cnn':
+            from Algorithms.ppo.core import CNNActorCritic
+            ac = CNNActorCritic
 
-        model = PPO(env_fn, save_dir, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
+        model = PPO(env_fn, save_dir, actor_critic=ac, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
         with open(os.path.join(save_dir, "ppo_config.json"), "w") as f:
             f.write(json.dumps(model_kwargs, indent=4))   
 

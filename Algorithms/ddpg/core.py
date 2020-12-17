@@ -135,7 +135,8 @@ class CNNActor(nn.Module):
         '''
         A Convolutional Neural Net for the Actor network
         Network Architecture: (input) -> CNN -> MLP -> (output)
-        Assume input is in the shape: (128, 128, 3)
+        Assume observation space is in the shape: (128, 128, 3), and observations collected is of the 
+        shape (3, 128, 128)
         Args:
             obs_dim (tuple): observation dimension of the environment in the form of (H, W, C)
             act_dim (int): action dimension of the environment
@@ -147,13 +148,13 @@ class CNNActor(nn.Module):
         '''
         super().__init__()
         
-        self.pi_cnn = cnn(obs_dim[2], conv_layer_sizes, nn.ReLU, batchnorm=True)
+        self.pi_cnn = cnn(obs_dim[2], conv_layer_sizes, activation, batchnorm=True)
         self.start_dim = self.calc_shape(obs_dim, self.pi_cnn)
         mlp_sizes = [self.start_dim] + list(hidden_sizes) + [act_dim]
         self.pi_mlp = mlp(mlp_sizes, activation, output_activation=nn.Tanh)
         self.act_limit = act_limit
 
-    def calc_shape(self, obs_dim, pi_cnn):
+    def calc_shape(self, obs_dim, cnn):
       '''
       Function to determine the shape of the data after the conv layers
       to determine how many neurons for the MLP.
@@ -161,7 +162,7 @@ class CNNActor(nn.Module):
       H, W, C = obs_dim
       dummy_input = torch.randn(1, C, H, W)
       with torch.no_grad():
-        cnn_out = pi_cnn(dummy_input)
+        cnn_out = cnn(dummy_input)
       shape = cnn_out.view(-1, ).shape[0]
       return shape
 
@@ -191,11 +192,11 @@ class CNNCritic(nn.Module):
             activation (nn.modules.activation): Activation function for each layer of MLP
         '''
         super().__init__()
-        self.q_cnn = cnn(obs_dim[2], conv_layer_sizes, nn.ReLU, batchnorm=True)
+        self.q_cnn = cnn(obs_dim[2], conv_layer_sizes, activation, batchnorm=True)
         self.start_dim = self.calc_shape(obs_dim, self.q_cnn)
         self.q_mlp = mlp([self.start_dim + act_dim] + list(hidden_sizes) + [1], activation)
 
-    def calc_shape(self, obs_dim, pi_cnn):
+    def calc_shape(self, obs_dim, cnn):
       '''
       Function to determine the shape of the data after the conv layers
       to determine how many neurons for the MLP.
@@ -203,7 +204,7 @@ class CNNCritic(nn.Module):
       H, W, C = obs_dim
       dummy_input = torch.randn(1, C, H, W)
       with torch.no_grad():
-        cnn_out = pi_cnn(dummy_input)
+        cnn_out = cnn(dummy_input)
       shape = cnn_out.view(-1, ).shape[0]
       return shape
 
@@ -222,7 +223,7 @@ class CNNCritic(nn.Module):
 class CNNActorCritic(nn.Module):
     def __init__(self, observation_space, action_space, conv_layer_sizes, hidden_sizes=(256, 256), activation=nn.ReLU, device='cpu'):
         '''
-        A Multi-Layer Perceptron for the Actor_Critic network
+        A CNN Perceptron for the Actor_Critic network
         Args:
             observation_space (gym.spaces): observation space of the environment
             act_space (gym.spaces): action space of the environment

@@ -8,7 +8,7 @@ import os
 import imageio
 
 from Wrappers.normalize_observation import Normalize_Observation
-from Algorithms.trpo.core import MLPActorCritic
+from Algorithms.trpo.core import MLPActorCritic, CNNActorCritic
 from Algorithms.trpo.gae_buffer import GAEBuffer
 from Logger.logger import Logger
 from copy import deepcopy
@@ -273,7 +273,7 @@ class TRPO:
             'v_optimizer': self.v_optimizer.state_dict()
         }
         torch.save(checkpoint, os.path.join(self.save_dir, _fname))
-        self.env.save(os.path.join(self.save_dir, "env.pickle"))
+        self.env.save(os.path.join(self.save_dir, "env.json"))
         print(f"checkpoint saved at {os.path.join(self.save_dir, _fname)}")
 
     def load_weights(self, best=True):
@@ -294,9 +294,9 @@ class TRPO:
             self.ac.pi.load_state_dict(checkpoint['pi'])
             self.v_optimizer.load_state_dict(checkpoint['v_optimizer'])
 
-            env_pkl_path = os.path.join(self.save_dir, "env.pickle")
-            if os.path.isfile(env_pkl_path):
-                self.env = self.env.__class__.load(env_pkl_path)
+            env_path = os.path.join(self.save_dir, "env.json")
+            if os.path.isfile(env_path):
+                self.env = self.env.load(env_path)
                 print("Environment loaded")
 
             print('checkpoint loaded at {}'.format(checkpoint_path))

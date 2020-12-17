@@ -2,6 +2,12 @@
 
 This repo is a pytorch implementation of various deep RL algorithms, trained and evaluated on pybullet robotic environments.
 
+## Dependencies:
+* torch==1.6.0
+* torchvision==0.7.0
+* CUDA >= 10.2
+* RLBench
+
 ## Implemented Algorithms:
 
 <table>
@@ -81,9 +87,10 @@ This repo is a pytorch implementation of various deep RL algorithms, trained and
 </table>
 
 ## How to use
+* Clone this repo
+* pip install -r requirements.txt
 
 ### Training model for openai gym environment
-* Clone this repo
 * Edit training parameters in ./Algorithms/<algo>/config.json
 ```
 python train.py

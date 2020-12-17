@@ -1,6 +1,7 @@
 import gym
 import numpy as np
 import pickle
+import json
 from typing import Tuple
 
 class Running_Stat:
@@ -69,6 +70,7 @@ class Normalize_Observation(gym.ObservationWrapper):
         return self.observation(observation)
 
     def observation(self, observation):
+        observation = super().observation()
         if self.training:
             self.running_stats.update(observation)
         mean = self.running_stats.get_mean()
@@ -80,10 +82,24 @@ class Normalize_Observation(gym.ObservationWrapper):
         return output_observation
     
     def save(self, fname):
-        with open(fname, 'wb') as f:
-            pickle.dump(self, f)
+        # with open(fname, 'wb') as f:
+        #     pickle.dump(self, f)
+        # Cannot pickle rlbench envs as they are thread.lock objects, so save the params as json instead
+        stats = {
+            "n": self.running_stats.n,
+            "mean": self.running_stats.mean.tolist(),
+            "M2": self.running_stats.M2.tolist()
+        }
+        with open(fname, 'w') as f:
+            f.write(json.dumps(stats, indent=4))
 
-    @classmethod
-    def load(cls, filename):
-        with open(filename, 'rb') as f:
-            return pickle.load(f)
+    # @classmethod
+    def load(self, filename):
+        # with open(filename, 'rb') as f:
+        #     return pickle.load(f)
+        # Cannot pickle rlbench envs as they are thread.lock objects, so load the params as json instead
+        with open(filename, 'r') as f:
+            stats = json.load(f)
+        self.running_stats.n = stats['n']
+        self.running_stats.mean = np.array(stats['mean'])
+        self.running_stats.M2 = np.array(stats['M2'])
