@@ -381,6 +381,12 @@ class CNNGaussianActor(Actor):
       shape = cnn_out.view(-1, ).shape[0]
       return shape
 
+    def forward_mu(self, obs):
+        obs = self.mu_cnn(obs)
+        obs = obs.view(-1, self.start_dim)
+        mu = self.mu_mlp(obs)
+        return mu
+
     def _distribution(self, obs):
         '''
         Forward propagation for actor network
@@ -404,8 +410,8 @@ class CNNGaussianActor(Actor):
         return pi.log_prob(act).sum(axis=-1)    # last axis sum needed for Torch Normal Distribution
     
     def calculate_kl(self, old_policy, new_policy, obs):
-        mu_old, std_old = old_policy.mu_net(obs).detach(), torch.exp(old_policy.log_std).detach()
-        mu, std = new_policy.mu_net(obs), torch.exp(new_policy.log_std)
+        mu_old, std_old = old_policy.forward_mu(obs).detach(), torch.exp(old_policy.log_std).detach()
+        mu, std = new_policy.forward_mu(obs), torch.exp(new_policy.log_std)
 
         # kl divergence between old policy and new policy : D( pi_old || pi_new )
         # (https://stats.stackexchange.com/questions/7440/kl-divergence-between-two-univariate-gaussians)
