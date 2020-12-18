@@ -83,6 +83,14 @@ def main():
         env_fn = lambda: Image_Wrapper(gym.make(args.env))
     else:
         env_fn = lambda: Serialize_Env(gym.make(args.env))
+    
+    if args.agent.lower() == 'random':
+        save_dir = os.path.join("Model_Weights", args.env) if args.gif else None
+        if not os.path.isdir(save_dir):
+            os.makedirs(save_dir, exist_ok=True)
+
+        random_test(env_fn, render=args.render, record_dir=save_dir, timesteps=args.timesteps)
+        return
 
     save_dir = os.path.join("Model_Weights", args.env, args.agent.lower())
     config_path = os.path.join(save_dir, args.agent.lower() + "_config.json")
@@ -92,15 +100,7 @@ def main():
     with open(config_path, 'r') as f:
         model_kwargs = json.load(f)
 
-    if args.agent.lower() == 'random':
-        save_dir = os.path.join("Model_Weights", args.env) if args.gif else None
-        if not os.path.isdir(save_dir):
-            os.makedirs(save_dir, exist_ok=True)
-
-        random_test(lambda:gym.make(args.env), render=args.render, record_dir=save_dir, timesteps=args.timesteps)
-        return
-
-    elif args.agent.lower() == 'ddpg':
+    if args.agent.lower() == 'ddpg':
         from Algorithms.ddpg.ddpg import DDPG
         if args.arch == 'mlp':
             from Algorithms.ddpg.core import MLPActorCritic
@@ -109,7 +109,7 @@ def main():
             from Algorithms.ddpg.core import CNNActorCritic
             ac = CNNActorCritic
 
-        model = DDPG(lambda: gym.make(args.env), save_dir, actor_critic=ac, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
+        model = DDPG(env_fn, save_dir, actor_critic=ac, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
         model.load_weights(load_buffer=False)
 
     elif args.agent.lower() == 'td3':
@@ -121,7 +121,7 @@ def main():
             from Algorithms.td3.core import CNNActorCritic
             ac = CNNActorCritic
             
-        model = TD3(lambda: gym.make(args.env), save_dir, actor_critic=ac, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
+        model = TD3(env_fn, save_dir, actor_critic=ac, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
         model.load_weights(load_buffer=False)
 
     elif args.agent.lower() == 'trpo':
@@ -133,7 +133,7 @@ def main():
             from Algorithms.trpo.core import CNNActorCritic
             ac = CNNActorCritic
 
-        model = TRPO(lambda: Normalize_Observation(gym.make(args.env)), save_dir, actor_critic=ac, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
+        model = TRPO(env_fn, save_dir, actor_critic=ac, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
         model.load_weights()
     elif args.agent.lower() == 'ppo':
         from Algorithms.ppo.ppo import PPO
@@ -144,7 +144,7 @@ def main():
             from Algorithms.ppo.core import CNNActorCritic
             ac = CNNActorCritic
 
-        model = PPO(lambda: Normalize_Observation(gym.make(args.env)), save_dir, actor_critic=ac, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
+        model = PPO(env_fn, save_dir, actor_critic=ac, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
         model.load_weights()
 
     ep_ret, ep_len = model.test(render=args.render, record=args.gif, timesteps=args.timesteps)
