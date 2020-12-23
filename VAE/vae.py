@@ -64,7 +64,7 @@ class VAE(nn.Module):
 
         recon_loss = F.mse_loss(x_hat, x, reduction='sum')
         kld = 0.5*torch.sum(log_var.exp() - log_var - 1 + mu.pow(2))
-        elbo = recon_loss + kl_d # self.beta * kld
+        elbo = recon_loss + self.beta * kld
 
         log_dict = {
             'elbo': elbo.item(),
