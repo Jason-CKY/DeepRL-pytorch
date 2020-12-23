@@ -55,6 +55,12 @@ This repo is a pytorch implementation of various deep RL algorithms, trained and
     </tbody>
 </table>
 
+## Environments Supported
+The following gym environments are supported on this repo.
+* OpenAI gym's environments
+* Pybullet gym environments
+* RLBench gym environments
+
 ## VAE network
 VAE network needs to be pretrained on the environment's images before being used on the RL algorithm. The data generation and training code are provided at [VAE directory](VAE/README.md)
 
