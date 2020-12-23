@@ -56,7 +56,7 @@ This repo is a pytorch implementation of various deep RL algorithms, trained and
 </table>
 
 ## VAE network
-VAE network needs to be pretrained on the environment's images before being used on the RL algorithm. The data generation and training code are provided at (VAE/)[VAE/README.md]
+VAE network needs to be pretrained on the environment's images before being used on the RL algorithm. The data generation and training code are provided at [VAE directory](VAE/README.md)
 
 ## Comparison of results in PyBullet Environments
 <table>
