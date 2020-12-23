@@ -10,7 +10,7 @@ from torchvision import transforms
 from torch.utils.data import DataLoader
 
 from dataset.Dataset import ImageDataset
-from ..Logger.logger import Logger
+from logger import Logger
 from vae import VAE
 from tqdm import tqdm
 from PIL import Image

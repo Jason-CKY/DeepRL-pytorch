@@ -24,10 +24,10 @@ def main():
     if args.rlbench:
         assert args.view is not None
         import rlbench.gym
-        from ..Wrappers.rlbench_wrapper import RLBench_Wrapper_Data
+        from Wrappers.rlbench_wrapper import RLBench_Wrapper_Data
         env = RLBench_Wrapper(gym.make(args.env), args.view)
     else:
-        from ..Wrappers.image_learning import Image_Wrapper_Data
+        from Wrappers.image_learning import Image_Wrapper_Data
         env = Image_Wrapper(gym.make(args.env))
     
     save_dir = os.path.join("dataset", args.env, args.view) if args.view is not None else os.path.join("dataset", args.env)
