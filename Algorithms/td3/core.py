@@ -1,27 +1,11 @@
 import numpy as np
 import torch.nn as nn
 import torch
+from Algorithms.body import mlp, cnn
 
 ##########################################################################################################
 #MLP ACTOR-CRITIC##
 ##########################################################################################################
-
-def mlp(sizes, activation, output_activation=nn.Identity):
-    '''
-    Create a multi-layer perceptron model from input sizes and activations
-    Args:
-        sizes (list): list of number of neurons in each layer of MLP
-        activation (nn.modules.activation): Activation function for each layer of MLP
-        output_activation (nn.modules.activation): Activation function for the output of the last layer
-    Return:
-        nn.Sequential module for the MLP
-    '''
-    layers = []
-    for j in range(len(sizes)-1):
-        act = activation if j<len(sizes)-2 else output_activation
-        layers += [nn.Linear(sizes[j], sizes[j+1]), act()]
-    return nn.Sequential(*layers)
-
 class MLPActor(nn.Module):
     def __init__(self, obs_dim, act_dim, hidden_sizes, activation, act_limit):
         '''
@@ -99,35 +83,6 @@ class MLPActorCritic(nn.Module):
 ##########################################################################################################
 #CNN ACTOR-CRITIC##
 ##########################################################################################################
-
-def cnn(in_channels, conv_layer_sizes, activation, batchnorm=True):
-  '''
-  Create a Convolutional Neural Network with given number of cnn layers
-  Each convolutional layer has kernel_size=2, and stride=2, which effectively
-  halves the spatial dimensions and doubles the channel size.
-  Args:
-    con_layer_sizes (list): list of 3-tuples consisting of 
-                            (output_channel, kernel_size, stride)
-    in_channels (int): incoming number of channels
-    num_layers (int): number of convolutional layers needed
-    activation (nn.Module.Activation): Activation function after each conv layer
-    batchnorm (bool): If true, add a batchnorm2d layer after activation layer
-  Returns:
-    nn.Sequential module for the CNN
-  '''
-  layers = []
-  channels = in_channels
-  for i in range(len(conv_layer_sizes)):
-    out_channel, kernel, stride = conv_layer_sizes[i]
-    layers += [nn.Conv2d(in_channels, out_channel, kernel, stride),
-               activation()]
-    if batchnorm:
-      layers += [nn.BatchNorm2d(out_channel)]
-    
-    in_channels = out_channel
-
-  return nn.Sequential(*layers)
-
 class CNNActor(nn.Module):
     def __init__(self, obs_dim, act_dim, conv_layer_sizes, hidden_sizes, activation, act_limit):
         '''

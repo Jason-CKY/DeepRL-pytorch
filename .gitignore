@@ -10,3 +10,7 @@ Stable_Baselines/logs/**/*.zip
 Stable_Baselines/logs/**/*.pkl
 Stable_Baselines/logs/**/*.csv
 Algorithms/ddpg/Model_Weights
+VAE/output
+VAE/dataset/*
+!VAE/dataset/Dataset.py
+!VAE/dataset/__init__.py

@@ -6,6 +6,11 @@ This repo is a pytorch implementation of various deep RL algorithms, trained and
 * CUDA >= 10.2
 * [RLBench](https://github.com/stepjam/RLBench)
 
+## Types of Networks Implemented:
+* Multi-Layered Perceptron (MLP)
+* Convolutional Neural Network (CNN)
+* Variational Autoencoders (VAE)
+
 ## Implemented Algorithms:
 
 <table>
@@ -50,6 +55,8 @@ This repo is a pytorch implementation of various deep RL algorithms, trained and
     </tbody>
 </table>
 
+## VAE network
+VAE network needs to be pretrained on the environment's images before being used on the RL algorithm. The data generation and training code are provided at (VAE/)[VAE/README.md]
 
 ## Comparison of results in PyBullet Environments
 <table>
