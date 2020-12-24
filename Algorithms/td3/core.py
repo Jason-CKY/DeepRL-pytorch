@@ -56,12 +56,13 @@ class MLPCritic(nn.Module):
         return torch.squeeze(q, -1)     # ensure q has the right shape
 
 class MLPActorCritic(nn.Module):
-    def __init__(self, observation_space, action_space, hidden_sizes=(256, 256), activation=nn.ReLU, device='cpu'):
+    def __init__(self, observation_space, action_space, 
+            hidden_sizes=(256, 256), activation=nn.ReLU, device='cpu', **kwargs):
         '''
         A Multi-Layer Perceptron for the Actor_Critic network
         Args:
             observation_space (gym.spaces): observation space of the environment
-            act_space (gym.spaces): action space of the environment
+            action_space (gym.spaces): action space of the environment
             hidden_sizes (tuple): list of number of neurons in each layer of MLP
             activation (nn.modules.activation): Activation function for each layer of MLP
             device (str): whether to use cpu or gpu to run the model
@@ -173,12 +174,13 @@ class CNNCritic(nn.Module):
         return torch.squeeze(q, -1)     # ensure q has the right shape
 
 class CNNActorCritic(nn.Module):
-    def __init__(self, observation_space, action_space, conv_layer_sizes, hidden_sizes=(256, 256), activation=nn.ReLU, device='cpu'):
+    def __init__(self, observation_space, action_space, conv_layer_sizes, hidden_sizes=(256, 256), 
+                activation=nn.ReLU, device='cpu', **kwargs):
         '''
         A Multi-Layer Perceptron for the Actor_Critic network
         Args:
             observation_space (gym.spaces): observation space of the environment
-            act_space (gym.spaces): action space of the environment
+            action_space (gym.spaces): action space of the environment
             conv_layer_sizes (list): list of 3-tuples consisting of (output_channel, kernel_size, stride)
                         that describes the cnn architecture
             hidden_sizes (tuple): list of number of neurons in each layer of MLP

@@ -1,5 +1,6 @@
 {
     "ac_kwargs": {
+        "model_type": "cnn",
         "v_hidden_sizes": [128, 64],
         "pi_hidden_sizes": [64, 32],
         "conv_layer_sizes": [[16, 5, 2],

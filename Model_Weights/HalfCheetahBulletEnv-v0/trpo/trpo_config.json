@@ -1,5 +1,6 @@
 {
     "ac_kwargs": {
+        "model_type": "mlp",
         "v_hidden_sizes": [
             128,
             64

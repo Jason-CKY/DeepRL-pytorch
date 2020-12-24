@@ -9,6 +9,7 @@ import imageio
 
 from Wrappers.normalize_observation import Normalize_Observation
 from Algorithms.ddpg.core import MLPActorCritic, CNNActorCritic
+from Algorithms.utils import get_actor_critic_module
 from Algorithms.ddpg.replay_buffer import ReplayBuffer
 from Logger.logger import Logger
 from copy import deepcopy
@@ -16,7 +17,7 @@ from torch.optim import Adam
 from tqdm import tqdm
 
 class DDPG:
-    def __init__(self, env_fn, save_dir, actor_critic=MLPActorCritic, ac_kwargs=dict(), seed=0, 
+    def __init__(self, env_fn, save_dir, ac_kwargs=dict(), seed=0, 
          replay_size=int(1e6), gamma=0.99, 
          tau=0.995, pi_lr=1e-3, q_lr=1e-3, batch_size=100, start_steps=10000, 
          update_after=1000, update_every=50, act_noise=0.1, num_test_episodes=10, 
@@ -71,9 +72,9 @@ class DDPG:
         self.act_limit = self.env.action_space.high[0]
 
         # Create actor-critic module
-        self.actor_critic = actor_critic
+        self.actor_critic = get_actor_critic_module(ac_kwargs, 'ddpg')
         self.ac_kwargs = ac_kwargs
-        self.ac = actor_critic(self.env.observation_space, self.env.action_space, device=self.device, **ac_kwargs)
+        self.ac = self.actor_critic(self.env.observation_space, self.env.action_space, device=self.device, **ac_kwargs)
         self.ac_targ = deepcopy(self.ac)
 
         # Freeze target networks with respect to optimizers
@@ -197,6 +198,8 @@ class DDPG:
             obs = [obs]
         obs = torch.as_tensor(obs, dtype=torch.float32).to(self.device)
         action = self.ac.act(obs).squeeze()
+        if len(action.shape) == 0:
+            action = np.array([action])
         action += noise_scale*np.random.randn(self.act_dim)
         return np.clip(action, -self.act_limit, self.act_limit)
 

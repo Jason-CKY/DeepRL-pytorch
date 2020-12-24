@@ -6,11 +6,6 @@ This repo is a pytorch implementation of various deep RL algorithms, trained and
 * CUDA >= 10.2
 * [RLBench](https://github.com/stepjam/RLBench)
 
-## Types of Networks Implemented:
-* Multi-Layered Perceptron (MLP)
-* Convolutional Neural Network (CNN)
-* Variational Autoencoders (VAE)
-
 ## Implemented Algorithms:
 
 <table>
@@ -61,6 +56,45 @@ The following gym environments are supported on this repo.
 * Pybullet gym environments
 * RLBench gym environments
 
+## Types of Networks Implemented:
+* Multi-Layered Perceptron (MLP)
+* Convolutional Neural Network (CNN)
+* Variational Autoencoders (VAE)
+
+* hidden_sizes are the number of neurons in each of the dense layer of the MLP.
+* conv_layer_sizes is a list containing the parameters of each convolutional layer, i.e. [output_channel, kernel_size, stride]
+
+To use mlp neural net, set ac_kwargs['model_type'] to 'mlp'
+
+```
+"ac_kwargs": {
+    "model_type": "mlp"
+    "hidden_sizes": [256, 256]
+}
+```
+
+To use cnn neural net, set ac_kwargs['model_type'] to 'cnn'
+
+```
+"ac_kwargs": {
+    "model_type": "cnn"
+    "hidden_sizes": [512, 256],
+    "conv_layer_sizes": [[16, 5, 2],
+    [32, 5, 2], 
+    [64, 5, 2], 
+    [64, 3, 1]]
+}
+```
+
+To use cnn neural net, set ac_kwargs['model_type'] to 'vae'. 
+```
+"ac_kwargs": {
+    "model_type": "vae",
+    "vae_weights_path": "VAE/output/vae_reach_target-vision-v0_wrist_rgb.pth",
+    "hidden_sizes": [512, 256]
+}
+```
+
 ## VAE network
 VAE network needs to be pretrained on the environment's images before being used on the RL algorithm. The data generation and training code are provided at [VAE directory](VAE/README.md)
 
@@ -102,7 +136,7 @@ VAE network needs to be pretrained on the environment's images before being used
 * pip install -r requirements.txt
 
 ### Training model for openai gym environment
-* Edit training parameters in ./Algorithms/<algo>/config.json
+* Edit training parameters in ./Algorithms/<algo>/<algo>_config.json
 ```
 python train.py
 usage: train.py [-h] [--env ENV] [--agent {ddpg,trpo,ppo,td3,random}]

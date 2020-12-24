@@ -7,8 +7,8 @@ import argparse
 import os
 import imageio
 
-from Wrappers.normalize_observation import Normalize_Observation
 from Algorithms.trpo.core import MLPActorCritic, CNNActorCritic
+from Algorithms.utils import get_actor_critic_module
 from Algorithms.trpo.gae_buffer import GAEBuffer
 from Logger.logger import Logger
 from copy import deepcopy
@@ -17,7 +17,7 @@ from tqdm import tqdm
 
 class TRPO:
     
-    def __init__(self, env_fn, save_dir, actor_critic=MLPActorCritic, ac_kwargs=dict(), seed=0, 
+    def __init__(self, env_fn, save_dir, ac_kwargs=dict(), seed=0, 
          steps_per_epoch=400, gamma=0.99, delta=0.01, vf_lr=1e-3,
          train_v_iters=80, damping_coeff=0.1, cg_iters=10, backtrack_iters=10, 
          backtrack_coeff=0.8, lam=0.97, max_ep_len=1000, logger_kwargs=dict(), 
@@ -82,9 +82,9 @@ class TRPO:
         self.train_v_iters = train_v_iters
 
         # Main network
-        self.actor_critic = actor_critic
+        self.actor_critic = get_actor_critic_module(ac_kwargs, 'trpo')
         self.ac_kwargs = ac_kwargs
-        self.ac = actor_critic(self.env.observation_space, self.env.action_space, device=self.device, **ac_kwargs)
+        self.ac = self.actor_critic(self.env.observation_space, self.env.action_space, device=self.device, **ac_kwargs)
 
         # Create Optimizers
         self.v_optimizer = optim.Adam(self.ac.v.parameters(), lr=self.vf_lr)

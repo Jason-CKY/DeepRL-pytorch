@@ -17,7 +17,6 @@ def parse_arguments():
 
     parser.add_argument('--env', type=str, default='CartPoleContinuousBulletEnv-v0', help='environment_id')
     parser.add_argument('--agent', type=str, default='ppo', choices=['ddpg', 'trpo', 'ppo', 'td3', 'random'], help='specify type of agent')
-    parser.add_argument('--arch', type=str, default='mlp', choices=['mlp', 'cnn'], help='specify architecture of neural net')
     parser.add_argument('--timesteps', type=int, required=True, help='specify number of timesteps to train for') 
     parser.add_argument('--seed', type=int, default=0, help='seed number for reproducibility')
     parser.add_argument('--num_trials', type=int, default=1, help='Number of times to train the algo')
@@ -42,7 +41,7 @@ def main():
     else:
         env_fn = lambda: Serialize_Env(gym.make(args.env))
         
-    config_path = os.path.join("Algorithms", args.agent.lower(), args.agent.lower() + "_config_" + args.arch + ".json")
+    config_path = os.path.join("Algorithms", args.agent.lower(), args.agent.lower() + "_config.json")
     save_dir = os.path.join("Model_Weights", args.env, args.agent.lower())
     logger_kwargs = {
         "output_dir": save_dir
@@ -52,53 +51,29 @@ def main():
 
     if args.agent.lower() == 'ddpg':
         from Algorithms.ddpg.ddpg import DDPG
-        if args.arch == 'mlp':
-            from Algorithms.ddpg.core import MLPActorCritic
-            ac = MLPActorCritic
-        elif args.arch == 'cnn':
-            from Algorithms.ddpg.core import CNNActorCritic
-            ac = CNNActorCritic
 
-        model = DDPG(env_fn, save_dir, actor_critic=ac, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
+        model = DDPG(env_fn, save_dir, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
         with open(os.path.join(save_dir, "ddpg_config.json"), "w") as f:
             f.write(json.dumps(model_kwargs, indent=4))
 
     elif args.agent.lower() == 'td3':
         from Algorithms.td3.td3 import TD3
-        if args.arch == 'mlp':
-            from Algorithms.td3.core import MLPActorCritic
-            ac = MLPActorCritic
-        elif args.arch == 'cnn':
-            from Algorithms.td3.core import CNNActorCritic
-            ac = CNNActorCritic
 
-        model = TD3(env_fn, save_dir, actor_critic=ac, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
+        model = TD3(env_fn, save_dir, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
         with open(os.path.join(save_dir, "td3_config.json"), "w") as f:
             f.write(json.dumps(model_kwargs, indent=4))        
     
     elif args.agent.lower() == 'trpo':
         from Algorithms.trpo.trpo import TRPO
-        if args.arch == 'mlp':
-            from Algorithms.trpo.core import MLPActorCritic
-            ac = MLPActorCritic
-        elif args.arch == 'cnn':
-            from Algorithms.trpo.core import CNNActorCritic
-            ac = CNNActorCritic
 
-        model = TRPO(env_fn, save_dir, actor_critic=ac, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
+        model = TRPO(env_fn, save_dir, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
         with open(os.path.join(save_dir, "trpo_config.json"), "w") as f:
             f.write(json.dumps(model_kwargs, indent=4))    
 
     elif args.agent.lower() == 'ppo':
         from Algorithms.ppo.ppo import PPO
-        if args.arch == 'mlp':
-            from Algorithms.ppo.core import MLPActorCritic
-            ac = MLPActorCritic
-        elif args.arch == 'cnn':
-            from Algorithms.ppo.core import CNNActorCritic
-            ac = CNNActorCritic
-
-        model = PPO(env_fn, save_dir, actor_critic=ac, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
+ 
+        model = PPO(env_fn, save_dir, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
         with open(os.path.join(save_dir, "ppo_config.json"), "w") as f:
             f.write(json.dumps(model_kwargs, indent=4))   
 

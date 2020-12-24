@@ -9,6 +9,7 @@ import imageio
 
 from Wrappers.normalize_observation import Normalize_Observation
 from Algorithms.ppo.core import MLPActorCritic, CNNActorCritic
+from Algorithms.utils import get_actor_critic_module
 from Algorithms.ppo.gae_buffer import GAEBuffer
 from Logger.logger import Logger
 from copy import deepcopy
@@ -16,7 +17,7 @@ from torch import optim
 from tqdm import tqdm
 
 class PPO:
-    def __init__(self, env_fn, save_dir, actor_critic=MLPActorCritic, ac_kwargs=dict(), seed=0, 
+    def __init__(self, env_fn, save_dir, ac_kwargs=dict(), seed=0, 
          steps_per_epoch=400, gamma=0.99, clip_ratio=0.2, vf_lr=1e-3, pi_lr=3e-4,
          train_v_iters=80, train_pi_iters=80, lam=0.97, max_ep_len=1000, 
          target_kl=0.01, logger_kwargs=dict(), save_freq=10):
@@ -75,9 +76,9 @@ class PPO:
         self.train_pi_iters = train_pi_iters
 
         # Main network
-        self.actor_critic = actor_critic
+        self.actor_critic = get_actor_critic_module(ac_kwargs, 'ppo')
         self.ac_kwargs = ac_kwargs
-        self.ac = actor_critic(self.env.observation_space, self.env.action_space, device=self.device, **ac_kwargs)
+        self.ac = self.actor_critic(self.env.observation_space, self.env.action_space, device=self.device, **ac_kwargs)
 
         # Create Optimizers
         self.v_optimizer = optim.Adam(self.ac.v.parameters(), lr=self.vf_lr)

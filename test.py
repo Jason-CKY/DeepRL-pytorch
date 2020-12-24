@@ -8,8 +8,9 @@ import imageio
 import numpy as np
 
 from Wrappers.normalize_observation import Normalize_Observation
-# from stable_baselines3.common.cmd_util import make_vec_env
-# from stable_baselines3.common.vec_env import VecNormalize
+from Wrappers.serialize_env import Serialize_Env
+from Wrappers.rlbench_wrapper import RLBench_Wrapper
+from Wrappers.image_learning import Image_Wrapper
 
 def random_test(env_fn, render=True, record_dir=None, timesteps=None):
     '''
@@ -58,7 +59,6 @@ def parse_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument('--env', type=str, default='AntBulletEnv-v0', help='environment_id')
     parser.add_argument('--agent', type=str, default='ppo', choices=['ddpg', 'trpo', 'ppo', 'td3', 'random'], help='specify type of agent')
-    parser.add_argument('--arch', type=str, default='mlp', choices=['mlp', 'cnn'], help='specify architecture of neural net')
     parser.add_argument('--render', action='store_true', help='if true, display human renders of the environment')
     parser.add_argument('--gif', action='store_true', help='if true, make gif of the trained agent')
     parser.add_argument('--timesteps', type=int, help='specify number of timesteps to train for')
@@ -102,49 +102,25 @@ def main():
 
     if args.agent.lower() == 'ddpg':
         from Algorithms.ddpg.ddpg import DDPG
-        if args.arch == 'mlp':
-            from Algorithms.ddpg.core import MLPActorCritic
-            ac = MLPActorCritic
-        elif args.arch == 'cnn':
-            from Algorithms.ddpg.core import CNNActorCritic
-            ac = CNNActorCritic
-
-        model = DDPG(env_fn, save_dir, actor_critic=ac, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
+        
+        model = DDPG(env_fn, save_dir, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
         model.load_weights(load_buffer=False)
 
     elif args.agent.lower() == 'td3':
         from Algorithms.td3.td3 import TD3
-        if args.arch == 'mlp':
-            from Algorithms.td3.core import MLPActorCritic
-            ac = MLPActorCritic
-        elif args.arch == 'cnn':
-            from Algorithms.td3.core import CNNActorCritic
-            ac = CNNActorCritic
             
-        model = TD3(env_fn, save_dir, actor_critic=ac, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
+        model = TD3(env_fn, save_dir, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
         model.load_weights(load_buffer=False)
 
     elif args.agent.lower() == 'trpo':
         from Algorithms.trpo.trpo import TRPO
-        if args.arch == 'mlp':
-            from Algorithms.trpo.core import MLPActorCritic
-            ac = MLPActorCritic
-        elif args.arch == 'cnn':
-            from Algorithms.trpo.core import CNNActorCritic
-            ac = CNNActorCritic
 
-        model = TRPO(env_fn, save_dir, actor_critic=ac, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
+        model = TRPO(env_fn, save_dir, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
         model.load_weights()
     elif args.agent.lower() == 'ppo':
         from Algorithms.ppo.ppo import PPO
-        if args.arch == 'mlp':
-            from Algorithms.ppo.core import MLPActorCritic
-            ac = MLPActorCritic
-        elif args.arch == 'cnn':
-            from Algorithms.ppo.core import CNNActorCritic
-            ac = CNNActorCritic
 
-        model = PPO(env_fn, save_dir, actor_critic=ac, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
+        model = PPO(env_fn, save_dir, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
         model.load_weights()
 
     ep_ret, ep_len = model.test(render=args.render, record=args.gif, timesteps=args.timesteps)

@@ -118,12 +118,13 @@ class MLPGaussianActor(Actor):
 
 
 class MLPActorCritic(nn.Module):
-    def __init__(self, observation_space, action_space, v_hidden_sizes=(256, 256), pi_hidden_sizes=(64,64), activation=nn.Tanh, device='cpu'):
+    def __init__(self, observation_space, action_space, v_hidden_sizes=(256, 256),
+                 pi_hidden_sizes=(64,64), activation=nn.Tanh, device='cpu', **kwargs):
         '''
         A Multi-Layer Perceptron for the Actor_Critic network
         Args:
             observation_space (gym.spaces): observation space of the environment
-            act_space (gym.spaces): action space of the environment
+            action_space (gym.spaces): action space of the environment
             hidden_sizes (tuple): list of number of neurons in each layer of MLP
             activation (nn.modules.activation): Activation function for each layer of MLP
             device (str): whether to use cpu or gpu to run the model
@@ -317,14 +318,16 @@ class CNNGaussianActor(Actor):
         return pi.log_prob(act).sum(axis=-1)    # last axis sum needed for Torch Normal Distribution
 
 class CNNActorCritic(nn.Module):
-    def __init__(self, observation_space, action_space, conv_layer_sizes, v_hidden_sizes=(256, 256), pi_hidden_sizes=(64,64), activation=nn.Tanh, device='cpu'):
+    def __init__(self, observation_space, action_space, conv_layer_sizes, 
+                v_hidden_sizes=(256, 256), pi_hidden_sizes=(64,64), 
+                activation=nn.Tanh, device='cpu', **kwargs):
         '''
         A CNN Perceptron for the Actor_Critic network
         Args:
             observation_space (gym.spaces): observation space of the environment
-            act_space (gym.spaces): action space of the environment
+            action_space (gym.spaces): action space of the environment
             conv_layer_sizes (list): list of 3-tuples consisting of (output_channel, kernel_size, stride)
-                                    that describes the cnn architecture
+                        that describes the cnn architecture
             v_hidden_sizes (tuple): list of number of neurons in each layer of MLP in value network
             pi_hidden_sizes (tuple): list of number of neurons in each layer of MLP in policy network
             activation (nn.modules.activation): Activation function for each layer of MLP
