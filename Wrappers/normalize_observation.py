@@ -70,7 +70,6 @@ class Normalize_Observation(gym.ObservationWrapper):
         return self.observation(observation)
 
     def observation(self, observation):
-        observation = super().observation()
         if self.training:
             self.running_stats.update(observation)
         mean = self.running_stats.get_mean()
