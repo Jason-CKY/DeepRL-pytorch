@@ -14,6 +14,7 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 from pl_bolts.models.autoencoders.components import resnet18_encoder, resnet18_decoder
+from collections import OrderedDict
 
 def mlp(sizes, activation, output_activation=nn.Identity):
     '''
@@ -66,6 +67,7 @@ class VAE(nn.Module):
         '''
         super().__init__()
         self.device = device
+        self.latent_dim = latent_dim
         # encoder
         self.encoder = resnet18_encoder(False, False)
         # distribution parameters

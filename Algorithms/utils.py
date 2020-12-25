@@ -28,8 +28,22 @@ def get_actor_critic_module(ac_kwargs, RL_Algorithm):
         elif RL_Algorithm.lower() == 'ppo':
             from Algorithms.ppo.core import CNNActorCritic            
             return CNNActorCritic
+
+    elif ac_kwargs['model_type'].lower() == 'vae':
+        if RL_Algorithm.lower() == 'ddpg':
+            from Algorithms.ddpg.core import VAEActorCritic            
+            return VAEActorCritic
+        elif RL_Algorithm.lower() == 'td3':
+            from Algorithms.td3.core import VAEActorCritic            
+            return VAEActorCritic
+        elif RL_Algorithm.lower() == 'trpo':
+            from Algorithms.trpo.core import VAEActorCritic            
+            return VAEActorCritic
+        elif RL_Algorithm.lower() == 'ppo':
+            from Algorithms.ppo.core import VAEActorCritic            
+            return VAEActorCritic
     
-    raise AssertionError("Invalid model_type in config.json. Choose among ['mlp', 'cnn']")
+    raise AssertionError("Invalid model_type in config.json. Choose among ['mlp', 'cnn', 'vae']")
 
 def sanitise_state_dict(state_dict):
     '''
