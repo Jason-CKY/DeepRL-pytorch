@@ -270,7 +270,7 @@ class VAEActorCritic(nn.Module):
     def __init__(self, observation_space, action_space, vae_weights_path,
     hidden_sizes=(256, 256), activation=nn.ReLU, device='cpu', **kwargs):
         '''
-        A CNN Perceptron for the Actor_Critic network
+        A Variational Autoencoder network for the Actor_Critic network
         Args:
             observation_space (gym.spaces): observation space of the environment
             action_space (gym.spaces): action space of the environment
@@ -285,8 +285,8 @@ class VAEActorCritic(nn.Module):
         act_limit = action_space.high[0]
 
         # Create Actor and Critic networks
-        self.pi = VAEActor(obs_dim, act_dim, hidden_sizes, activation, act_limit).to(device)
-        self.q = VAECritic(obs_dim, act_dim, hidden_sizes, activation).to(device)
+        self.pi = VAEActor(vae_weights_path, obs_dim, act_dim, hidden_sizes, activation, act_limit).to(device)
+        self.q = VAECritic(vae_weights_path, obs_dim, act_dim, hidden_sizes, activation).to(device)
     
     def act(self, obs):
         with torch.no_grad():
