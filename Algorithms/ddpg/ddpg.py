@@ -9,7 +9,7 @@ import imageio
 
 from Wrappers.normalize_observation import Normalize_Observation
 from Algorithms.ddpg.core import MLPActorCritic, CNNActorCritic
-from Algorithms.utils import get_actor_critic_module
+from Algorithms.utils import get_actor_critic_module, sanitise_state_dict
 from Algorithms.ddpg.replay_buffer import ReplayBuffer
 from Logger.logger import Logger
 from copy import deepcopy
@@ -265,10 +265,10 @@ class DDPG:
                 self.replay_buffer.load(os.path.join(self.save_dir, "replay_buffer.pickle"))
             key = 'cuda' if torch.cuda.is_available() else 'cpu'
             checkpoint = torch.load(checkpoint_path, map_location=key)
-            self.ac.load_state_dict(checkpoint['ac'])
-            self.ac_targ.load_state_dict(checkpoint['ac_target'])
-            self.pi_optimizer.load_state_dict(checkpoint['pi_optimizer'])
-            self.q_optimizer.load_state_dict(checkpoint['q_optimizer'])
+            self.ac.load_state_dict(sanitise_state_dict(checkpoint['ac']))
+            self.ac_targ.load_state_dict(sanitise_state_dict(checkpoint['ac_target']))
+            self.pi_optimizer.load_state_dict(sanitise_state_dict(checkpoint['pi_optimizer']))
+            self.q_optimizer.load_state_dict(sanitise_state_dict(checkpoint['q_optimizer']))
 
             env_path = os.path.join(self.save_dir, "env.json")
             if os.path.isfile(env_path):

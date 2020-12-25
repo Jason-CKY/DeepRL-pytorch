@@ -5,6 +5,7 @@ Contains the following:
     2) CNN
     3) VAE
 '''
+import os
 import numpy as np
 import torch.nn as nn
 import torch
@@ -93,8 +94,7 @@ class VAE(nn.Module):
         checkpoint = {
             'encoder': self.encoder.state_dict(),
             'fc_mu': self.fc_mu.state_dict(),
-            'fc_var': self.fc_var.state_dict(),
-            'decoder': self.decoder.state_dict()
+            'fc_var': self.fc_var.state_dict()
         }
         torch.save(checkpoint, fpath)
         print(f"checkpoint saved at {fpath}")    
@@ -102,9 +102,9 @@ class VAE(nn.Module):
     def load_weights(self, fpath):
         if os.path.isfile(fpath):
             checkpoint = torch.load(fpath, map_location=self.device)
-            self.encoder.load_state_dict(checkpoint['encoder'])
-            self.fc_mu.load_state_dict(checkpoint['fc_mu'])
-            self.fc_var.load_state_dict(checkpoint['fc_var'])
+            self.encoder.load_state_dict(self.sanitise_state_dict(checkpoint['encoder']))
+            self.fc_mu.load_state_dict(self.sanitise_state_dict(checkpoint['fc_mu']))
+            self.fc_var.load_state_dict(self.sanitise_state_dict(checkpoint['fc_var']))
 
             print('checkpoint loaded at {}'.format(fpath))
         else:
@@ -116,4 +116,22 @@ class VAE(nn.Module):
         self.decoder = nn.DataParallel(self.decoder, list(range(ngpu)))
         self.fc_mu = nn.DataParallel(self.fc_mu, list(range(ngpu)))
         self.fc_var = nn.DataParallel(self.fc_var, list(range(ngpu)))
+        
+    def sanitise_state_dict(self, state_dict):
+        '''
+        Weights saved with nn.DataParallel wrapper cannot be loaded with a normal net
+        This utility function serves to remove the module. prefix so that the state_dict can 
+        be loaded without nn.DataParallel wrapper
+        Args:
+            state_dict (OrderedDict): the weights to be loaded
+        Returns:
+            output_dict (OrderedDict): weights that is able to be loaded without nn.DataParallel wrapper
+        '''
+        output_dict = OrderedDict()
+        for k, v in state_dict.items():
+            if 'module' in k:
+                output_dict[k[7:]] = v # remove the first 7 characters 'module.' with string slicing
+            else:
+                output_dict[k] = v
+        return output_dict
         

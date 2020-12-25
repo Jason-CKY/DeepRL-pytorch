@@ -111,7 +111,9 @@ def main():
                 vae.save_weights(os.path.join(args.save_dir, "weights", f"{epoch}_{i}.pth"))
                 
         logger.dump()
-
+    
+    latest_weights_fname = '_'.join(args.dir.split('/')[1:]) + '.pth'
+    vae.save_weights(os.path.join(args.save_dir, latest_weights_fname))
     frames[0].save(os.path.join(args.save_dir, 'animation.gif'), format='GIF', append_images=frames[1:], save_all=True, duration=500, loop=0)
 
     elbo, kl, recon_loss = logger.load_results(['elbo', 'kl', 'recon_loss'])

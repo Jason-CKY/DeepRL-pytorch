@@ -30,3 +30,21 @@ def get_actor_critic_module(ac_kwargs, RL_Algorithm):
             return CNNActorCritic
     
     raise AssertionError("Invalid model_type in config.json. Choose among ['mlp', 'cnn']")
+
+def sanitise_state_dict(state_dict):
+    '''
+    Weights saved with nn.DataParallel wrapper cannot be loaded with a normal net
+    This utility function serves to remove the module. prefix so that the state_dict can 
+    be loaded without nn.DataParallel wrapper
+    Args:
+        state_dict (OrderedDict): the weights to be loaded
+    Returns:
+        output_dict (OrderedDict): weights that is able to be loaded without nn.DataParallel wrapper
+    '''
+    output_dict = OrderedDict()
+    for k, v in state_dict.items():
+        if 'module' in k:
+            output_dict[k[7:]] = v # remove the first 7 characters 'module.' with string slicing
+        else:
+            output_dict[k] = v
+    return output_dict
