@@ -4,7 +4,7 @@ import torch
 from gym.spaces import Box, Discrete
 from torch.distributions.categorical import Categorical
 from torch.distributions.normal import Normal
-from Algorithms.body import mlp, cnn
+from Algorithms.body import mlp, cnn, VAE
 
 ##########################################################################################################
 #MLP ACTOR-CRITIC##
@@ -350,8 +350,170 @@ class CNNActorCritic(nn.Module):
         self.v = CNNCritic(obs_dim, conv_layer_sizes, v_hidden_sizes, activation).to(device)
     
     def step(self, obs):
-        if len(obs.shape) == 3:
-            obs = obs.unsqueeze(0)
+        obs = obs.unsqueeze(0)
+        self.pi.eval()
+        self.v.eval()
+        with torch.no_grad():
+            pi = self.pi._distribution(obs)
+            a = pi.sample().squeeze()
+            logp_a = self.pi._log_prob_from_distribution(pi, a)
+            v = self.v(obs).detach().cpu().numpy()
+        return a.detach().cpu().numpy(), v, logp_a.cpu().detach().numpy()
+
+    def act(self, obs):
+        return self.step(obs)[0]
+
+##########################################################################################################
+#VAE ACTOR-CRITIC##
+##########################################################################################################
+class VAECritic(nn.Module):
+    def __init__(self, vae_weights_path, obs_dim, conv_layer_sizes, hidden_sizes, activation):
+        '''
+        A Variational Autoencoder Net for the Critic network
+        Args:
+            vae_weights_path (Str): Path to the vae weights file
+            obs_dim (tuple): observation dimension of the environment in the form of (C, H, W)
+            act_dim (int): action dimension of the environment
+            hidden_sizes (list): list of number of neurons in each layer of MLP
+            activation (nn.modules.activation): Activation function for each layer of MLP
+        '''
+        super().__init__()
+        self.v_vae = VAE()
+        self.v_vae.load_weights(vae_weights_path)
+        self.v_mlp = mlp([self.v_vae.latent_dim] + list(hidden_sizes) + [1], activation)
+
+    def forward(self, obs):
+        '''
+        Forward propagation for critic network
+        Args:
+            obs (Tensor [n, obs_dim]): batch of observation from environment
+        '''
+        obs = self.v_vae(obs)
+        v = self.v_mlp(obs)
+        return torch.squeeze(v, -1)     # ensure q has the right shape
+
+class VAECategoricalActor(Actor):
+    def __init__(self, vae_weights_path, obs_dim, act_dim, hidden_sizes, activation):
+        '''
+        A Variational Autoencoder Net for the Actor network for discrete outputs
+        Network Architecture: (input) -> VAE -> MLP -> (output)
+        Assume input is in the shape: (3, 128, 128)
+        Args:
+            vae_weights_path (Str): Path to the vae weights file
+            obs_dim (tuple): observation dimension of the environment in the form of (C, H, W)
+            act_dim (int): action dimension of the environment
+            hidden_sizes (list): list of number of neurons in each layer of MLP after output from VAE
+            activation (nn.modules.activation): Activation function for each layer of MLP
+        '''
+        super().__init__()
+        
+        self.logits_vae = VAE()
+        self.logits_vae.load_weights(vae_weights_path)
+        mlp_sizes = [self.logits_vae.latent_dim] + list(hidden_sizes) + [act_dim]
+        self.logits_mlp = mlp(mlp_sizes, activation, output_activation=nn.Tanh)
+
+        # initialise actor network final layer weights to be 1/100 of other weights
+        self.logits_mlp[-2].weight.data /= 100 # last layer is Identity, so we tweak second last layer weights
+
+    def _distribution(self, obs):
+        '''
+        Forward propagation for actor network
+        Args:
+            obs (Tensor [n, obs_dim]): batch of observation from environment
+        Return:
+            Categorical distribution from output of model
+        '''
+        obs = self.logits_vae(obs)
+        logits = self.logits_mlp(obs)
+        return Categorical(logits=logits)
+
+    def _log_prob_from_distribution(self, pi, act):
+        '''
+        Args:
+            pi: distribution from _distribution() function
+            act: log probability of selecting action act from the given distribution pi
+        '''
+        return pi.log_prob(act)
+
+class VAEGaussianActor(Actor):
+    def __init__(self, vae_weights_path, obs_dim, act_dim, conv_layer_sizes, hidden_sizes, activation):
+        '''
+        A Convolutional Neural Net for the Actor network for Continuous outputs
+        Network Architecture: (input) -> VAE -> MLP -> (output)
+        Assume input is in the shape: (3, 128, 128)
+        Args:
+            vae_weights_path (Str): Path to the vae weights file
+            obs_dim (tuple): observation dimension of the environment in the form of (C, H, W)
+            act_dim (int): action dimension of the environment
+            hidden_sizes (list): list of number of neurons in each layer of MLP after output from VAE
+            activation (nn.modules.activation): Activation function for each layer of MLP
+        '''
+        super().__init__()
+        log_std = -0.5*np.ones(act_dim, dtype=np.float32)
+        self.log_std = torch.nn.Parameter(torch.as_tensor(log_std))
+
+        self.mu_vae = VAE()
+        mlp_sizes = [self.mu_vae.latent_dim] + list(hidden_sizes) + [act_dim]
+        self.mu_mlp = mlp(mlp_sizes, activation, output_activation=nn.Tanh)
+        # initialise actor network final layer weights to be 1/100 of other weights
+        self.mu_mlp[-2].weight.data /= 100 # last layer is Identity, so we tweak second last layer weights
+
+    def _distribution(self, obs):
+        '''
+        Forward propagation for actor network
+        Args:
+            obs (Tensor [n, obs_dim]): batch of observation from environment
+        Return:
+            Categorical distribution from output of model
+        '''
+        obs = self.mu_vae(obs)
+        mu = self.mu_mlp(obs)
+        std = torch.exp(self.log_std)
+        return Normal(mu, std)
+
+    def _log_prob_from_distribution(self, pi, act):
+        '''
+        Args:
+            pi: distribution from _distribution() function
+            act: log probability of selecting action act from the given distribution pi
+        '''
+        return pi.log_prob(act).sum(axis=-1)    # last axis sum needed for Torch Normal Distribution
+
+class VAEActorCritic(nn.Module):
+    def __init__(self, vae_weights_path, observation_space, action_space, conv_layer_sizes, 
+                v_hidden_sizes=(256, 256), pi_hidden_sizes=(64,64), 
+                activation=nn.Tanh, device='cpu', **kwargs):
+        '''
+        A Variational Autoencoder for the Actor_Critic network
+        Args:
+            vae_weights_path (Str): Path to the vae weights file
+            observation_space (gym.spaces): observation space of the environment
+            action_space (gym.spaces): action space of the environment
+            conv_layer_sizes (list): list of 3-tuples consisting of (output_channel, kernel_size, stride)
+                        that describes the cnn architecture
+            v_hidden_sizes (tuple): list of number of neurons in each layer of MLP in value network
+            pi_hidden_sizes (tuple): list of number of neurons in each layer of MLP in policy network
+            activation (nn.modules.activation): Activation function for each layer of MLP
+            device (str): whether to use cpu or gpu to run the model
+        '''
+        super().__init__()
+        obs_dim = observation_space.shape
+        try:
+            act_dim = action_space.shape[0]
+        except IndexError:
+            act_dim = action_space.n
+            
+        # Create Actor and Critic networks
+        if isinstance(action_space, Box):
+            self.pi = VAEGaussianActor(vae_weights_path, obs_dim, act_dim, conv_layer_sizes, pi_hidden_sizes, activation).to(device)
+
+        elif isinstance(action_space, Discrete):
+            self.pi = VAECategoricalActor(vae_weights_path, obs_dim, act_dim, conv_layer_sizes, pi_hidden_sizes, activation).to(device)
+
+        self.v = VAECritic(vae_weights_path, obs_dim, conv_layer_sizes, v_hidden_sizes, activation).to(device)
+    
+    def step(self, obs):
+        obs = obs.unsqueeze(0)
         self.pi.eval()
         self.v.eval()
         with torch.no_grad():

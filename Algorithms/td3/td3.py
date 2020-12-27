@@ -210,16 +210,14 @@ class TD3:
         '''
         Input the current observation into the actor network to calculate action to take.
         Args:
-            obs (numpy ndarray): Current state of the environment
+            obs (numpy ndarray): Current state of the environment. Only 1 state, not a batch of states
             noise_scale (float): Stddev for Gaussian exploration noise
         Return:
             Action (numpy ndarray): Scaled action that is clipped to environment's action limits
         '''
         self.ac.eval()
         self.ac_targ.eval()
-        if self.actor_critic == CNNActorCritic:
-            obs = [obs]
-        obs = torch.as_tensor(obs, dtype=torch.float32).to(self.device)
+        obs = torch.as_tensor([obs], dtype=torch.float32).to(self.device)
         action = self.ac.act(obs).squeeze()
         if len(action.shape) == 0:
             action = np.array([action])

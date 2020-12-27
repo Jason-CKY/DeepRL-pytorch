@@ -23,7 +23,9 @@ def parse_arguments():
     parser.add_argument('--normalize', action='store_true', help='if true, normalize environment observations')
     parser.add_argument('--rlbench', action='store_true', help='if true, use rlbench environment wrappers')
     parser.add_argument('--image', action='store_true', help='if true, use rlbench environment wrappers')
-
+    parser.add_argument('--view', type=str, default='wrist_rgb', 
+                        choices=['wrist_rgb', 'front_rgb', 'left_shoulder_rgb', 'right_shoulder_rgb'], 
+                        help='choose the type of camera view to generate image (only for RLBench envs)')
     return parser.parse_args()
 
 def main():
@@ -31,9 +33,9 @@ def main():
     if args.rlbench:
         import rlbench.gym
         if args.normalize:
-            env_fn = lambda: Normalize_Observation(RLBench_Wrapper(gym.make(args.env), 'wrist_rgb'))
+            env_fn = lambda: Normalize_Observation(RLBench_Wrapper(gym.make(args.env), args.view))
         else:
-            env_fn = lambda: RLBench_Wrapper(gym.make(args.env), 'wrist_rgb')
+            env_fn = lambda: RLBench_Wrapper(gym.make(args.env), args.view)
     elif args.normalize:
         env_fn = lambda: Normalize_Observation(gym.make(args.env))
     elif args.image:
