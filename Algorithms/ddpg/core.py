@@ -32,6 +32,10 @@ class MLPActor(nn.Module):
         '''
         return self.pi(obs)*self.act_limit
 
+    def dataparallel(self, ngpu):
+        print(f"Actor network using {ngpu} gpus, gpu id: {list(range(ngpu))}")
+        self.pi = nn.DataParallel(self.pi, list(range(ngpu)))
+
 class MLPCritic(nn.Module):
     def __init__(self, obs_dim, act_dim, hidden_sizes, activation):
         '''
@@ -55,9 +59,13 @@ class MLPCritic(nn.Module):
         q = self.q(torch.cat([obs, act], dim=-1))
         return torch.squeeze(q, -1)     # ensure q has the right shape
 
+    def dataparallel(self, ngpu):
+        print(f"Critic network using {ngpu} gpus, gpu id: {list(range(ngpu))}")
+        self.q = nn.DataParallel(self.q, list(range(ngpu)))
+
 class MLPActorCritic(nn.Module):
     def __init__(self, observation_space, action_space, hidden_sizes=(256, 256), 
-                activation=nn.ReLU, device='cpu', **kwargs):
+                activation=nn.ReLU, device='cpu', ngpu=1, **kwargs):
         '''
         A Multi-Layer Perceptron for the Actor_Critic network
         Args:
@@ -75,7 +83,12 @@ class MLPActorCritic(nn.Module):
         # Create Actor and Critic networks
         self.pi = MLPActor(obs_dim, act_dim, hidden_sizes, activation, act_limit).to(device)
         self.q = MLPCritic(obs_dim, act_dim, hidden_sizes, activation).to(device)
-    
+
+        self.ngpu = ngpu
+        if self.ngpu > 1:
+            self.pi.dataparallel(self.ngpu)
+            self.q.dataparallel(self.ngpu)
+        
     def act(self, obs):
         with torch.no_grad():
             return self.pi(obs).cpu().numpy()
@@ -131,7 +144,12 @@ class CNNActor(nn.Module):
         obs = obs.view(-1, self.start_dim)
         obs = self.pi_mlp(obs)
         return obs*self.act_limit
-       
+
+    def dataparallel(self, ngpu):
+        print(f"Actor Network using {ngpu} gpus, gpu id: {list(range(ngpu))}")
+        self.pi_cnn = nn.DataParallel(self.pi_cnn, list(range(ngpu)))
+        self.pi_mlp = nn.DataParallel(self.pi_mlp, list(range(ngpu)))
+
 class CNNCritic(nn.Module):
     def __init__(self, obs_dim, act_dim, conv_layer_sizes, hidden_sizes, activation):
         '''
@@ -173,9 +191,14 @@ class CNNCritic(nn.Module):
         q = self.q_mlp(torch.cat([obs, act], dim=-1))
         return torch.squeeze(q, -1)     # ensure q has the right shape
 
+    def dataparallel(self, ngpu):
+        print(f"Critic Network using {ngpu} gpus, gpu id: {list(range(ngpu))}")
+        self.q_cnn = nn.DataParallel(self.q_cnn, list(range(ngpu)))
+        self.q_mlp = nn.DataParallel(self.q_mlp, list(range(ngpu)))
+
 class CNNActorCritic(nn.Module):
     def __init__(self, observation_space, action_space, conv_layer_sizes, 
-    hidden_sizes=(256, 256), activation=nn.ReLU, device='cpu', **kwargs):
+    hidden_sizes=(256, 256), activation=nn.ReLU, device='cpu', ngpu=1, **kwargs):
         '''
         A CNN Perceptron for the Actor_Critic network
         Args:
@@ -196,6 +219,11 @@ class CNNActorCritic(nn.Module):
         self.pi = CNNActor(obs_dim, act_dim, conv_layer_sizes, hidden_sizes, activation, act_limit).to(device)
         self.q = CNNCritic(obs_dim, act_dim, conv_layer_sizes, hidden_sizes, activation).to(device)
     
+        self.ngpu = ngpu
+        if self.ngpu > 1:
+            self.pi.dataparallel(self.ngpu)
+            self.q.dataparallel(self.ngpu)
+
     def act(self, obs):
         with torch.no_grad():
             return self.pi(obs).cpu().numpy()
@@ -238,6 +266,11 @@ class VAEActor(nn.Module):
         obs = self.pi_mlp(obs)
         return obs*self.act_limit
        
+    def dataparallel(self, ngpu):
+        print(f"Actor Network using {ngpu} gpus, gpu id: {list(range(ngpu))}")
+        self.pi_vae.dataparallel(ngpu)
+        self.pi_mlp = nn.DataParallel(self.pi_mlp, list(range(ngpu)))
+
 class VAECritic(nn.Module):
     def __init__(self, vae_weights_path, obs_dim, act_dim, hidden_sizes, activation):
         '''
@@ -266,9 +299,14 @@ class VAECritic(nn.Module):
         q = self.q_mlp(torch.cat([obs, act], dim=-1))
         return torch.squeeze(q, -1)     # ensure q has the right shape
 
+    def dataparallel(self, ngpu):
+        print(f"Critic Network using {ngpu} gpus, gpu id: {list(range(ngpu))}")
+        self.q_vae.dataparallel(ngpu)
+        self.q_mlp = nn.DataParallel(self.q_mlp, list(range(ngpu)))
+
 class VAEActorCritic(nn.Module):
     def __init__(self, observation_space, action_space, vae_weights_path,
-    hidden_sizes=(256, 256), activation=nn.ReLU, device='cpu', **kwargs):
+    hidden_sizes=(256, 256), activation=nn.ReLU, device='cpu', ngpu=1, **kwargs):
         '''
         A Variational Autoencoder network for the Actor_Critic network
         Args:
@@ -288,6 +326,11 @@ class VAEActorCritic(nn.Module):
         self.pi = VAEActor(vae_weights_path, obs_dim, act_dim, hidden_sizes, activation, act_limit).to(device)
         self.q = VAECritic(vae_weights_path, obs_dim, act_dim, hidden_sizes, activation).to(device)
     
+        self.ngpu = ngpu
+        if self.ngpu > 1:
+            self.pi.dataparallel(self.ngpu)
+            self.q.dataparallel(self.ngpu)
+
     def act(self, obs):
         with torch.no_grad():
             return self.pi(obs).cpu().numpy()

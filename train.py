@@ -19,6 +19,7 @@ def parse_arguments():
     parser.add_argument('--agent', type=str, default='ppo', choices=['ddpg', 'trpo', 'ppo', 'td3', 'random'], help='specify type of agent')
     parser.add_argument('--timesteps', type=int, required=True, help='specify number of timesteps to train for') 
     parser.add_argument('--seed', type=int, default=0, help='seed number for reproducibility')
+    parser.add_argument('--ngpu', type=int, default=1, help='Number of gpus to use for training (default 1)')
     parser.add_argument('--num_trials', type=int, default=1, help='Number of times to train the algo')
     parser.add_argument('--normalize', action='store_true', help='if true, normalize environment observations')
     parser.add_argument('--rlbench', action='store_true', help='if true, use rlbench environment wrappers')
@@ -50,7 +51,8 @@ def main():
     }
     with open(config_path, 'r') as f:
         model_kwargs = json.load(f)
-
+        model_kwargs['ngpu'] = args.ngpu
+        
     if args.agent.lower() == 'ddpg':
         from Algorithms.ddpg.ddpg import DDPG
 

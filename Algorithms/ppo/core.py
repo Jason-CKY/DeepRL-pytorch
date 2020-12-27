@@ -32,6 +32,10 @@ class MLPCritic(nn.Module):
         '''
         return torch.squeeze(self.v_net(obs), -1)     # ensure v has the right shape
 
+    def dataparallel(self, ngpu):
+        print(f"Critic network using {ngpu} gpus, gpu id: {list(range(ngpu))}")
+        self.v_net = nn.DataParallel(self.v_net, list(range(ngpu)))
+
 class Actor(nn.Module):
     '''
     Base Actor class for categorical/gaussian actor to inherit from
@@ -84,6 +88,10 @@ class MLPCategoricalActor(Actor):
         '''
         return pi.log_prob(act)
 
+    def dataparallel(self, ngpu):
+        print(f"Actor network using {ngpu} gpus, gpu id: {list(range(ngpu))}")
+        self.logits_net = nn.DataParallel(self.logits_net, list(range(ngpu)))
+
 class MLPGaussianActor(Actor):
     '''
     Actor network for continuous outputs
@@ -116,10 +124,13 @@ class MLPGaussianActor(Actor):
         '''
         return pi.log_prob(act).sum(axis=-1)    # last axis sum needed for Torch Normal Distribution
 
+    def dataparallel(self, ngpu):
+        print(f"Actor network using {ngpu} gpus, gpu id: {list(range(ngpu))}")
+        self.mu_net = nn.DataParallel(self.mu_net, list(range(ngpu)))
 
 class MLPActorCritic(nn.Module):
     def __init__(self, observation_space, action_space, v_hidden_sizes=(256, 256),
-                 pi_hidden_sizes=(64,64), activation=nn.Tanh, device='cpu', **kwargs):
+                 pi_hidden_sizes=(64,64), activation=nn.Tanh, device='cpu', ngpu=1, **kwargs):
         '''
         A Multi-Layer Perceptron for the Actor_Critic network
         Args:
@@ -145,6 +156,11 @@ class MLPActorCritic(nn.Module):
 
         self.v = MLPCritic(obs_dim, v_hidden_sizes, activation).to(device)
     
+        self.ngpu = ngpu
+        if self.ngpu > 1:
+            self.pi.dataparallel(self.ngpu)
+            self.v.dataparallel(self.ngpu)
+
     def step(self, obs):
         self.pi.eval()
         self.v.eval()
@@ -200,6 +216,11 @@ class CNNCritic(nn.Module):
         obs = obs.view(-1, self.start_dim)
         v = self.v_mlp(obs)
         return torch.squeeze(v, -1)     # ensure q has the right shape
+
+    def dataparallel(self, ngpu):
+        print(f"Critic network using {ngpu} gpus, gpu id: {list(range(ngpu))}")
+        self.v_cnn = nn.DataParallel(self.v_cnn, list(range(ngpu)))
+        self.v_mlp = nn.DataParallel(self.v_mlp, list(range(ngpu)))
 
 class CNNCategoricalActor(Actor):
     def __init__(self, obs_dim, act_dim, conv_layer_sizes, hidden_sizes, activation):
@@ -257,6 +278,11 @@ class CNNCategoricalActor(Actor):
             act: log probability of selecting action act from the given distribution pi
         '''
         return pi.log_prob(act)
+
+    def dataparallel(self, ngpu):
+        print(f"Actor network using {ngpu} gpus, gpu id: {list(range(ngpu))}")
+        self.logits_cnn = nn.DataParallel(self.logits_cnn, list(range(ngpu)))
+        self.logits_mlp = nn.DataParallel(self.logits_mlp, list(range(ngpu)))
 
 class CNNGaussianActor(Actor):
     def __init__(self, obs_dim, act_dim, conv_layer_sizes, hidden_sizes, activation):
@@ -317,10 +343,15 @@ class CNNGaussianActor(Actor):
         '''
         return pi.log_prob(act).sum(axis=-1)    # last axis sum needed for Torch Normal Distribution
 
+    def dataparallel(self, ngpu):
+        print(f"Actor network using {ngpu} gpus, gpu id: {list(range(ngpu))}")
+        self.mu_cnn = nn.DataParallel(self.mu_cnn, list(range(ngpu)))
+        self.mu_mlp = nn.DataParallel(self.mu_mlp, list(range(ngpu)))
+
 class CNNActorCritic(nn.Module):
     def __init__(self, observation_space, action_space, conv_layer_sizes, 
                 v_hidden_sizes=(256, 256), pi_hidden_sizes=(64,64), 
-                activation=nn.Tanh, device='cpu', **kwargs):
+                activation=nn.Tanh, device='cpu', ngpu=1, **kwargs):
         '''
         A CNN Perceptron for the Actor_Critic network
         Args:
@@ -349,6 +380,11 @@ class CNNActorCritic(nn.Module):
 
         self.v = CNNCritic(obs_dim, conv_layer_sizes, v_hidden_sizes, activation).to(device)
     
+        self.ngpu = ngpu
+        if self.ngpu > 1:
+            self.pi.dataparallel(self.ngpu)
+            self.v.dataparallel(self.ngpu)
+
     def step(self, obs):
         obs = obs.unsqueeze(0)
         self.pi.eval()
@@ -392,6 +428,11 @@ class VAECritic(nn.Module):
         v = self.v_mlp(obs)
         return torch.squeeze(v, -1)     # ensure q has the right shape
 
+    def dataparallel(self, ngpu):
+        print(f"Critic network using {ngpu} gpus, gpu id: {list(range(ngpu))}")
+        self.v_vae.dataparallel(ngpu)
+        self.v_mlp = nn.DataParallel(self.v_mlp, list(range(ngpu)))
+
 class VAECategoricalActor(Actor):
     def __init__(self, vae_weights_path, obs_dim, act_dim, hidden_sizes, activation):
         '''
@@ -434,6 +475,11 @@ class VAECategoricalActor(Actor):
             act: log probability of selecting action act from the given distribution pi
         '''
         return pi.log_prob(act)
+
+    def dataparallel(self, ngpu):
+        print(f"Actor network using {ngpu} gpus, gpu id: {list(range(ngpu))}")
+        self.logits_vae.dataparallel(ngpu)
+        self.logits_mlp = nn.DataParallel(self.logits_mlp, list(range(ngpu)))
 
 class VAEGaussianActor(Actor):
     def __init__(self, vae_weights_path, obs_dim, act_dim, conv_layer_sizes, hidden_sizes, activation):
@@ -479,10 +525,15 @@ class VAEGaussianActor(Actor):
         '''
         return pi.log_prob(act).sum(axis=-1)    # last axis sum needed for Torch Normal Distribution
 
+    def dataparallel(self, ngpu):
+        print(f"Actor network using {ngpu} gpus, gpu id: {list(range(ngpu))}")
+        self.mu_vae.dataparallel(ngpu)
+        self.mu_mlp = nn.DataParallel(self.mu_mlp, list(range(ngpu)))
+
 class VAEActorCritic(nn.Module):
     def __init__(self, vae_weights_path, observation_space, action_space, conv_layer_sizes, 
                 v_hidden_sizes=(256, 256), pi_hidden_sizes=(64,64), 
-                activation=nn.Tanh, device='cpu', **kwargs):
+                activation=nn.Tanh, device='cpu', ngpu=1, **kwargs):
         '''
         A Variational Autoencoder for the Actor_Critic network
         Args:
@@ -512,6 +563,11 @@ class VAEActorCritic(nn.Module):
 
         self.v = VAECritic(vae_weights_path, obs_dim, conv_layer_sizes, v_hidden_sizes, activation).to(device)
     
+        self.ngpu = ngpu
+        if self.ngpu > 1:
+            self.pi.dataparallel(self.ngpu)
+            self.v.dataparallel(self.ngpu)
+            
     def step(self, obs):
         obs = obs.unsqueeze(0)
         self.pi.eval()
