@@ -7,6 +7,7 @@ import argparse
 import os
 import imageio
 
+from torch.utils.data.sampler import BatchSampler, SubsetRandomSampler
 from Wrappers.normalize_observation import Normalize_Observation
 from Algorithms.ppo.core import MLPActorCritic, CNNActorCritic
 from Algorithms.utils import get_actor_critic_module, sanitise_state_dict
@@ -18,9 +19,9 @@ from tqdm import tqdm
 
 class PPO:
     def __init__(self, env_fn, save_dir, ac_kwargs=dict(), seed=0, 
-         steps_per_epoch=400, gamma=0.99, clip_ratio=0.2, vf_lr=1e-3, pi_lr=3e-4,
-         train_v_iters=80, train_pi_iters=80, lam=0.97, max_ep_len=1000, 
-         target_kl=0.01, logger_kwargs=dict(), save_freq=10):
+         steps_per_epoch=400, batch_size=400, gamma=0.99, clip_ratio=0.2, 
+         vf_lr=1e-3, pi_lr=3e-4, train_v_iters=80, train_pi_iters=80, 
+         lam=0.97, max_ep_len=1000, target_kl=0.01, logger_kwargs=dict(), save_freq=10):
         """
         Proximal Policy Optimization 
         Args:
@@ -33,6 +34,7 @@ class PPO:
             seed (int): Seed for random number generators.
             steps_per_epoch (int): Number of steps of interaction (state-action pairs) 
                 for the agent and the environment in each epoch.
+            batch_size (int): The buffer is split into batches of batch_size to learn from
             gamma (float): Discount factor. (Always between 0 and 1.)
             clip_ratio (float): Hyperparameter for clipping in the policy objective.
                 Roughly: how far can the new policy go from the old policy while 
@@ -90,6 +92,7 @@ class PPO:
         self.obs_dim = self.env.observation_space.shape
         self.act_dim = self.env.action_space.shape
         self.buffer = GAEBuffer(self.obs_dim, self.act_dim, self.steps_per_epoch, self.device, self.gamma, self.lam)
+        self.batch_size = batch_size
 
         self.clip_ratio = clip_ratio
         self.target_kl = target_kl
@@ -116,45 +119,52 @@ class PPO:
     def update(self):
         self.ac.train()
         data = self.buffer.get()
-        obs = data['obs']
-        act = data['act']
-        ret = data['ret']
-        adv = data['adv']
-        logp_old = data['logp']
+        obs_ = data['obs']
+        act_ = data['act']
+        ret_ = data['ret']
+        adv_ = data['adv']
+        logp_old_ = data['logp']
 
-        # ---------------------Recording the losses before the updates --------------------------------
-        pi, logp = self.ac.pi(obs, act)
-        ratio = torch.exp(logp - logp_old)
-        clipped_adv = torch.clamp(ratio, 1-self.clip_ratio, 1+self.clip_ratio) * adv
-        loss_pi = -torch.min(ratio*adv, clipped_adv).mean()
-        v = self.ac.v(obs)
-        loss_v = ((v-ret)**2).mean()
+        for index in BatchSampler(SubsetRandomSampler(range(self.steps_per_epoch)), self.batch_size, False):
+            obs = obs_[index]
+            act = act_[index]
+            ret = ret_[index]
+            adv = adv_[index]
+            logp_old = logp_old_[index]
 
-        self.logger.store(LossV=loss_v.item(), LossPi=loss_pi.item())
-        # --------------------------------------------------------------------------------------------   
-          
-        # Update Policy     
-        for i in range(self.train_pi_iters):
-            # Policy loss
-            self.pi_optimizer.zero_grad()
+            # ---------------------Recording the losses before the updates --------------------------------
             pi, logp = self.ac.pi(obs, act)
             ratio = torch.exp(logp - logp_old)
             clipped_adv = torch.clamp(ratio, 1-self.clip_ratio, 1+self.clip_ratio) * adv
             loss_pi = -torch.min(ratio*adv, clipped_adv).mean()
-            approx_kl = (logp - logp_old).mean().item()
-            if approx_kl > 1.5*self.target_kl:
-                print(f"Early stopping at step {i} due to reaching max kl")
-                break
-            loss_pi.backward()
-            self.pi_optimizer.step()
-
-        # Update Value Function
-        for _ in range(self.train_v_iters):
-            self.v_optimizer.zero_grad()
             v = self.ac.v(obs)
             loss_v = ((v-ret)**2).mean()
-            loss_v.backward()
-            self.v_optimizer.step()
+
+            self.logger.store(LossV=loss_v.item(), LossPi=loss_pi.item())
+            # --------------------------------------------------------------------------------------------   
+            
+            # Update Policy     
+            for i in range(self.train_pi_iters):
+                # Policy loss
+                self.pi_optimizer.zero_grad()
+                pi, logp = self.ac.pi(obs, act)
+                ratio = torch.exp(logp - logp_old)
+                clipped_adv = torch.clamp(ratio, 1-self.clip_ratio, 1+self.clip_ratio) * adv
+                loss_pi = -torch.min(ratio*adv, clipped_adv).mean()
+                approx_kl = (logp - logp_old).mean().item()
+                if approx_kl > 1.5*self.target_kl:
+                    print(f"Early stopping at step {i} due to reaching max kl")
+                    break
+                loss_pi.backward()
+                self.pi_optimizer.step()
+
+            # Update Value Function
+            for _ in range(self.train_v_iters):
+                self.v_optimizer.zero_grad()
+                v = self.ac.v(obs)
+                loss_v = ((v-ret)**2).mean()
+                loss_v.backward()
+                self.v_optimizer.step()
 
     def save_weights(self, best=False, fname=None):
         '''

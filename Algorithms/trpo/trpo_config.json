@@ -9,6 +9,7 @@
         [64, 3, 1]]
     },
     "steps_per_epoch": 4000,
+    "batch_size": 128,
     "gamma": 0.99,
     "delta": 0.01,
     "vf_lr": 1e-3,

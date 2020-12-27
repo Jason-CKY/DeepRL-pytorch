@@ -99,7 +99,7 @@ def main():
     }
     with open(config_path, 'r') as f:
         model_kwargs = json.load(f)
-        model_kwargs['ngpu'] = 1
+        model_kwargs['ac_kwargs']['ngpu'] = args.ngpu
 
     if args.agent.lower() == 'ddpg':
         from Algorithms.ddpg.ddpg import DDPG

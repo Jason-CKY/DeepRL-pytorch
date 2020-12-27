@@ -7,6 +7,7 @@ import argparse
 import os
 import imageio
 
+from torch.utils.data.sampler import BatchSampler, SubsetRandomSampler
 from Algorithms.trpo.core import MLPActorCritic, CNNActorCritic
 from Algorithms.utils import get_actor_critic_module, sanitise_state_dict
 from Algorithms.trpo.gae_buffer import GAEBuffer
@@ -18,7 +19,7 @@ from tqdm import tqdm
 class TRPO:
     
     def __init__(self, env_fn, save_dir, ac_kwargs=dict(), seed=0, 
-         steps_per_epoch=400, gamma=0.99, delta=0.01, vf_lr=1e-3,
+         steps_per_epoch=400, batch_size=400, gamma=0.99, delta=0.01, vf_lr=1e-3,
          train_v_iters=80, damping_coeff=0.1, cg_iters=10, backtrack_iters=10, 
          backtrack_coeff=0.8, lam=0.97, max_ep_len=1000, logger_kwargs=dict(), 
          save_freq=10, algo='trpo'):
@@ -35,6 +36,7 @@ class TRPO:
             seed (int): Seed for random number generators.
             steps_per_epoch (int): Number of steps of interaction (state-action pairs) 
                 for the agent and the environment in each epoch.
+            batch_size (int): The buffer is split into batches of batch_size to learn from
             gamma (float): Discount factor. (Always between 0 and 1.)
             delta (float): KL-divergence limit for TRPO / NPG update. 
                 (Should be small for stability. Values like 0.01, 0.05.)
@@ -95,6 +97,7 @@ class TRPO:
         self.obs_dim = self.env.observation_space.shape
         self.act_dim = self.env.action_space.shape
         self.buffer = GAEBuffer(self.obs_dim, self.act_dim, self.steps_per_epoch, self.device, self.gamma, self.lam)
+        self.batch_size = batch_size
 
         self.cg_iters = cg_iters
         self.damping_coeff = damping_coeff
@@ -185,75 +188,82 @@ class TRPO:
     def update(self):
         self.ac.train()
         data = self.buffer.get()
-        obs = data['obs']
-        act = data['act']
-        ret = data['ret']
-        adv = data['adv']
-        logp_old = data['logp']
+        obs_ = data['obs']
+        act_ = data['act']
+        ret_ = data['ret']
+        adv_ = data['adv']
+        logp_old_ = data['logp']
 
-        # Prediction logπ_old(s), logπ(s)
-        _, logp = self.ac.pi(obs, act)
-        
-        # Policy loss
-        ratio_old = torch.exp(logp - logp_old)
-        surrogate_adv_old = (ratio_old*adv).mean()
-        
-        # policy gradient calculation as per algorithm, flatten to do matrix calculations later
-        gradient = torch.autograd.grad(surrogate_adv_old, self.ac.pi.parameters()) # calculate gradient of policy loss w.r.t to policy parameters
-        gradient = self.flat_grad(gradient)
+        for index in BatchSampler(SubsetRandomSampler(range(self.steps_per_epoch)), self.batch_size, False):
+            obs = obs_[index]
+            act = act_[index]
+            ret = ret_[index]
+            adv = adv_[index]
+            logp_old = logp_old_[index]
 
-        # Core calculations for NPG/TRPO
-        search_dir = self.cg(obs, gradient.data)    # H^-1 g
-        gHg = (self.hessian_vector_product(obs, search_dir) * search_dir).sum(0)
-        step_size = torch.sqrt(2 * self.delta / gHg)
-        old_params = self.flat_params(self.ac.pi)
-        # update the old model, calculate KL divergence then decide whether to update new model
-        self.update_model(self.ac.pi_old, old_params)        
+            # Prediction logπ_old(s), logπ(s)
+            _, logp = self.ac.pi(obs, act)
+            
+            # Policy loss
+            ratio_old = torch.exp(logp - logp_old)
+            surrogate_adv_old = (ratio_old*adv).mean()
+            
+            # policy gradient calculation as per algorithm, flatten to do matrix calculations later
+            gradient = torch.autograd.grad(surrogate_adv_old, self.ac.pi.parameters()) # calculate gradient of policy loss w.r.t to policy parameters
+            gradient = self.flat_grad(gradient)
 
-        if self.algo == 'npg':
-            params = old_params + step_size * search_dir
-            self.update_model(self.ac.pi, params)
+            # Core calculations for NPG/TRPO
+            search_dir = self.cg(obs, gradient.data)    # H^-1 g
+            gHg = (self.hessian_vector_product(obs, search_dir) * search_dir).sum(0)
+            step_size = torch.sqrt(2 * self.delta / gHg)
+            old_params = self.flat_params(self.ac.pi)
+            # update the old model, calculate KL divergence then decide whether to update new model
+            self.update_model(self.ac.pi_old, old_params)        
 
-            kl = self.ac.pi.calculate_kl(new_policy=self.ac.pi, old_policy=self.ac.pi_old, obs=obs)
-        elif self.algo == 'trpo':
-            for i in range(self.backtrack_iters):
-                # Backtracking line search
-                # (https://web.stanford.edu/~boyd/cvxbook/bv_cvxbook.pdf) 464p.
-                params = old_params + (self.backtrack_coeff**(i+1)) * step_size * search_dir
+            if self.algo == 'npg':
+                params = old_params + step_size * search_dir
                 self.update_model(self.ac.pi, params)
 
-                # Prediction logπ_old(s), logπ(s)
-                _, logp = self.ac.pi(obs, act)
-                
-                # Policy loss
-                ratio = torch.exp(logp - logp_old)
-                surrogate_adv = (ratio*adv).mean()
-
-                improve = surrogate_adv - surrogate_adv_old
                 kl = self.ac.pi.calculate_kl(new_policy=self.ac.pi, old_policy=self.ac.pi_old, obs=obs)
-                
-                # print(f"kl: {kl}")
-                if kl <= self.delta and improve>0:
-                    print('Accepting new params at step %d of line search.'%i)
-                    # self.backtrack_iters.append(i)
-                    # log backtrack_iters=i
-                    break
-
-                if i == self.backtrack_iters-1:
-                    print('Line search failed! Keeping old params.')
-                    # self.backtrack_iters.append(i)
-                    # log backtrack_iters=i
-
-                    params = self.flat_params(self.ac.pi_old)
+            elif self.algo == 'trpo':
+                for i in range(self.backtrack_iters):
+                    # Backtracking line search
+                    # (https://web.stanford.edu/~boyd/cvxbook/bv_cvxbook.pdf) 464p.
+                    params = old_params + (self.backtrack_coeff**(i+1)) * step_size * search_dir
                     self.update_model(self.ac.pi, params)
 
-        # Update Critic
-        for _ in range(self.train_v_iters):
-            self.v_optimizer.zero_grad()
-            v = self.ac.v(obs)
-            v_loss = ((v-ret)**2).mean()
-            v_loss.backward()
-            self.v_optimizer.step()
+                    # Prediction logπ_old(s), logπ(s)
+                    _, logp = self.ac.pi(obs, act)
+                    
+                    # Policy loss
+                    ratio = torch.exp(logp - logp_old)
+                    surrogate_adv = (ratio*adv).mean()
+
+                    improve = surrogate_adv - surrogate_adv_old
+                    kl = self.ac.pi.calculate_kl(new_policy=self.ac.pi, old_policy=self.ac.pi_old, obs=obs)
+                    
+                    # print(f"kl: {kl}")
+                    if kl <= self.delta and improve>0:
+                        print('Accepting new params at step %d of line search.'%i)
+                        # self.backtrack_iters.append(i)
+                        # log backtrack_iters=i
+                        break
+
+                    if i == self.backtrack_iters-1:
+                        print('Line search failed! Keeping old params.')
+                        # self.backtrack_iters.append(i)
+                        # log backtrack_iters=i
+
+                        params = self.flat_params(self.ac.pi_old)
+                        self.update_model(self.ac.pi, params)
+
+            # Update Critic
+            for _ in range(self.train_v_iters):
+                self.v_optimizer.zero_grad()
+                v = self.ac.v(obs)
+                v_loss = ((v-ret)**2).mean()
+                v_loss.backward()
+                self.v_optimizer.step()
 
     def save_weights(self, best=False, fname=None):
         '''
