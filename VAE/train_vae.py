@@ -60,6 +60,9 @@ def main():
     dataset = ImageDataset(args.dir, transform=transform)
     dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
 
+    # Get 8 sample images to test the decoder on to visualise training progress
+    sample_dl = DataLoader(dataset, batch_size=8, shuffle=True)
+
     vae = VAE(beta=args.beta).to(device)
     if args.ngpu>1:
         vae.dataparallel(args.ngpu)
@@ -99,11 +102,13 @@ def main():
                 }
                 print("#"*50)        
 
-            # Check how the model is doing by saving decoder's output on fixed_noise
+            # Check how the model is doing by saving decoder's output on original input
             if (i % args.save_freq == 0) or ((epoch == args.epochs-1) and (i == len(dataloader)-1)):
                 vae.eval()
+                sample_images = next(iter(sample_dl)) 
                 with torch.no_grad():
-                    im = vae.reconstruct(16)
+                    im = vae(sample_images)
+                im = torch.cat([sample_images, im], dim=0)
                 im = vutils.make_grid(im, padding=2).permute(1, 2, 0).numpy() * 0.5 + 0.5
                 im = Image.fromarray((im*255).astype(np.uint8))
                 im.save(os.path.join(args.save_dir, "reconstruction", f"epoch{epoch}_iter{i}.png"))
