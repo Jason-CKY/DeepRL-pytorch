@@ -1,3 +1,5 @@
+import numpy as np
+import torch
 from Algorithms.ddpg.core import MLPActorCritic, CNNActorCritic
 
 def get_actor_critic_module(ac_kwargs, RL_Algorithm):
@@ -62,3 +64,11 @@ def sanitise_state_dict(state_dict):
         else:
             output_dict[k] = v
     return output_dict
+
+def to_tensor(obs):
+    '''
+    Convert observation into a pytorch tensor
+    '''
+    obs = np.asarray(obs)
+    obs = torch.from_numpy(obs).float()
+    return obs
