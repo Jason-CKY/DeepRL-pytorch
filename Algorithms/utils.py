@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+from collections import OrderedDict
 from Algorithms.ddpg.core import MLPActorCritic, CNNActorCritic
 
 def get_actor_critic_module(ac_kwargs, RL_Algorithm):

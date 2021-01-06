@@ -97,7 +97,7 @@ class OptionCritic:
         self.act_noise = act_noise
         self.freeze_interval = freeze_interval
         self.max_ep_len = self.env.spec.max_episode_steps if self.env.spec.max_episode_steps is not None else max_ep_len
-
+        self.tau = tau
         self.save_freq = save_freq
         self.save_dir = save_dir
         self.best_mean_reward = -np.inf
@@ -123,61 +123,6 @@ class OptionCritic:
         # Set up optimizers for option_critic
         self.optimizer = self.optimizer_class(self.oc.parameters(), lr=self.lr)
 
-    def update(self, experiences):
-        '''
-        Do gradient updates for actor-critic models
-        Args:
-            experiences: sampled s, a, r, s', terminals from replay buffer.
-        '''
-        # Get states, action, rewards, next_states, terminals from experiences
-        self.oc.train()
-        self.oc_targ.train()
-        states, actions, rewards, next_states, terminals = experiences
-        states = states.to(self.device)
-        next_states = next_states.to(self.device)
-        actions = actions.to(self.device)
-        rewards = rewards.to(self.device)
-        terminals = terminals.to(self.device)
-
-        # --------------------- Optimizing critic ---------------------
-        self.q_optimizer.zero_grad()
-        # calculating q loss
-        Q_values = self.oc.q(states, actions)
-        with torch.no_grad():
-            next_actions = self.oc_targ.pi(next_states)
-            next_Q = self.oc_targ.q(next_states, next_actions) * (1-terminals)
-            Qprime = rewards + (self.gamma * next_Q)
-        
-        # MSE loss
-        loss_q = ((Q_values-Qprime)**2).mean()
-        loss_info = dict(Qvals=Q_values.detach().cpu().numpy().tolist())
-
-        loss_q.backward()
-        self.q_optimizer.step()
-
-        # --------------------- Optimizing actor ---------------------
-        # Freeze Q-network so no computational resources is wasted in computing gradients
-        for p in self.oc.q.parameters():
-            p.requires_grad = False
-
-        self.pi_optimizer.zero_grad()
-        loss_pi = -self.oc.q(states, self.oc.pi(states)).mean()
-        loss_pi.backward()
-        self.pi_optimizer.step()
-
-        # Unfreeze Q-network for next update step
-        for p in self.oc.q.parameters():
-            p.requires_grad = True
-            
-        # Record loss q and loss pi and qvals in the form of loss_info
-        self.logger.store(LossQ=loss_q.item(), LossPi=loss_pi.item(), **loss_info)
-
-        # update target networks
-        with torch.no_grad():
-            for p, p_targ in zip(self.oc.parameters(), self.oc_targ.parameters()):
-                p_targ.data.mul_(self.tau)
-                p_targ.data.add_((1-self.tau)*p.data)
-
     def get_action(self, obs, option, noise_scale):
         '''
         Input the current observation into the actor network to calculate action to take.
@@ -188,40 +133,81 @@ class OptionCritic:
         Return:
             Action (numpy ndarray): Scaled action that is clipped to environment's action limits
         '''
-        obs = to_tensor(obs).to(self.device)
+        obs = to_tensor(obs)
         with torch.no_grad():
             action = self.oc.act(obs, option).squeeze()
         action += noise_scale*np.random.randn(self.act_dim)
         return np.clip(action, -self.act_limit, self.act_limit)
-
-    def update_policies_and_terminations(self, obs, option, done, next_obs):
+        
+    def update_critic(self, experiences):
         '''
-        Do gradient updates for option policies and termination networks
+        Do gradient updates for actor-critic models
         Args:
             experiences: sampled s, a, r, s', terminals from replay buffer.
         '''
+        # Get states, action, rewards, next_states, terminals from experiences
+        self.oc.train()
+        self.oc_targ.train()
+        obs, options, rewards, next_obs, done = experiences
+        batch_idx = torch.arange(len(options)).long()
+        obs = obs.to(self.device)
+        options = next_states.to(self.device)
+        rewards = actions.to(self.device)
+        next_obs = rewards.to(self.device)
+        done = terminals.to(self.device)
+
+        states = self.oc.encode_state(obs)
+        Q = self.oc.Q_omega(states)
+
+        with torch.no_grad():
+            next_states = self.oc_targ.encode_state(next_obs)
+            next_Q = self.oc_targ.Q_omega(next_states)
+            next_option_term_prob = self.oc.get_terminations(next_obs)[batch_idx, options]
+
+            next_Q_omega = next_Q[batch_idx, options]
+            next_V_omega = next_Q.max(dim=-1).values
+
+        gt = rewards + (1-done) * self.gamma * \
+            ((1-next_option_term_prob)*next_Q_omega + next_option_term_prob*next_V_omega)
+        
+        self.optimizer.zero_grad()
+        td_error = (Q[batch_idx, options] - gt ** 2).mean()
+        self.optimizer.step()
+
+        # Record loss q and loss pi and qvals in the form of loss_info
+        self.logger.store(TDError=td_error.item())
+
+        # update target networks
+        with torch.no_grad():
+            for p, p_targ in zip(self.oc.parameters(), self.oc_targ.parameters()):
+                p_targ.data.mul_(self.tau)
+                p_targ.data.add_((1-self.tau)*p.data)
+
+    def update_policies_and_terminations(self, obs, current_option, logp, entropy, reward, done, next_obs):
+        '''
+        Do gradient updates for option policies and termination networks.
+        This update is perfomed on-line, and is updated every timestep as the
+        agent interacts with the environment
+        Args:
+            obs (numpy ndarray): current observation.
+        '''
         obs = to_tensor(obs).to(self.device)
         next_obs = to_tensor(next_obs).to(self.device)
+        reward = to_tensor(reward).to(self.device)
 
         # --------------------- Option Policy Loss ---------------------
         # Freeze Q-network so no computational resources is wasted in computing gradients
-        for p in self.oc.Q_u.parameters():
-            p.requires_grad = False
-
-        state = self.oc.encode_state(obs)
-        action = self.oc.policies[option](state)
-        policy_loss = -self.oc.get_Q_u(obs, option, action) #DDPG Loss
-        # Unfreeze Q-network for next update step
-        for p in self.oc.Q_u.parameters():
-            p.requires_grad = True
-
-        # --------------------- Termination Loss ---------------------
-        next_option_term_prob = self.oc.get_terminations(next_obs)[:, option]
         with torch.no_grad():
-            q_omega = self.oc_targ.get_Q_omega(next_obs, option)
-            v_omega = q_omega.max(dim=-1)
-            q_omega = q_omega[:, option]
-            adv = q_omega - v_omega + self.termination_reg
+            next_Q_omega = self.oc_targ.get_Q_omega(next_obs, current_option)
+            next_V_omega = self.oc_targ.get_V_omega(next_obs)
+            utility = (1-self.oc.get_terminations(next_obs)[:, current_option])*next_Q_omega + \
+                        self.oc.get_terminations(next_obs)[:, current_option]*next_V_omega
+            Q_u = reward + (1-done) * self.gamma * utility
+        policy_loss = -logp*Q_u - self.entropy_reg * entropy # Policy gradient with entropy regularization
+ 
+        # --------------------- Termination Loss ---------------------
+        next_option_term_prob = self.oc.get_terminations(next_obs)[:, current_option].squeeze()
+        adv = (next_Q_omega - next_V_omega + self.termination_reg).squeeze()
 
         termination_loss = next_option_term_prob * adv * (1 - done)
         loss_pi = policy_loss + termination_loss
@@ -322,12 +308,12 @@ class OptionCritic:
             
             if option_termination:
                 option_lengths[current_option].append(curr_op_len)
-                current_option = self.oc.get_option(to_tensor(obs).to(self.device), epsilon)
+                current_option = self.oc.get_option(to_tensor(obs), epsilon)
                 curr_op_len = 0
             
             # Until start_steps have elapsed, sample random actions from environment
             # to encourage more exploration, sample from policy network after that
-            action = self.get_action(obs, current_option, self.act_noise)
+            action, logp, entropy = self.oc.get_action(obs, current_option)
 
             # step the environment
             next_obs, reward, done, _ = self.env.step(action)
@@ -338,8 +324,9 @@ class OptionCritic:
             done = False if ep_len==self.max_ep_len else done
 
             # store experience to replay buffer
-            self.replay_buffer.append(obs, current_option, action, reward, next_obs, done)
-            self.update_policies_and_terminations(obs, current_option, done, next_obs)
+            self.replay_buffer.append(obs, current_option, reward, next_obs, done)
+            self.update_policies_and_terminations(obs, current_option, logp, entropy, reward, done, next_obs)
+
             if self.replay_buffer.size() >= self.batch_size:
                 # Update handling
                 if timestep%self.update_every==0:
@@ -352,7 +339,7 @@ class OptionCritic:
 
             # Critical step to update current state
             obs = next_obs
-            option_termination = self.oc.predict_option_termination(to_tensor(obs).to(self.device), current_option)
+            option_termination = self.oc.predict_option_termination(to_tensor(obs), current_option)
             
             # End of trajectory/episode handling
             if done or (ep_len==self.max_ep_len):
