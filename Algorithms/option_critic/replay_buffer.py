@@ -17,7 +17,7 @@ class ReplayBuffer:
         self.buffer = deque(maxlen=size)
         self.max_size = size
 
-    def append(self, state, option, action, reward, next_state, terminal):
+    def append(self, state, option, reward, next_state, terminal):
         '''
         Args:
             state (Numpy ndarray): The state.      
@@ -27,7 +27,7 @@ class ReplayBuffer:
             next_state (Numpy ndarray): The next state. 
             terminal (integer): 1 if the next state is a terminal state and 0 otherwise.
         '''
-        self.buffer.append([state, option, action, reward, next_state, terminal])
+        self.buffer.append([state, option, reward, next_state, terminal])
 
     def sample(self, batch_size):
         '''
@@ -40,26 +40,26 @@ class ReplayBuffer:
         sample = random.sample(self.buffer, batch_size)
         states = []
         options = []
-        actions = []
+        # actions = []
         rewards = []
         terminals = []
         next_states = []
         for experience in sample:
-            state, option, action, reward, next_state, terminal = experience
+            state, option, reward, next_state, terminal = experience
             states.append(state)
             options.append(option)
-            actions.append(action)
+            # actions.append(action)
             rewards.append(reward)
             terminals.append(terminal)
             next_states.append(next_state)
         
         states = torch.as_tensor(states, dtype=torch.float32)
-        options = torch.as_tensor(options, dtype=torch.float32)
-        actions = torch.as_tensor(actions, dtype=torch.float32)
+        options = torch.as_tensor(options, dtype=torch.long)
+        # actions = torch.as_tensor(actions, dtype=torch.float32)
         rewards = torch.as_tensor(rewards, dtype=torch.float32)
         next_states = torch.as_tensor(next_states, dtype=torch.float32)
         terminals = torch.as_tensor(terminals, dtype=torch.float32)
-        return states, options, actions, rewards, next_states, terminals
+        return states, options, rewards, next_states, terminals
 
     def size(self):
         '''

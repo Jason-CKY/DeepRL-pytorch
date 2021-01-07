@@ -19,7 +19,7 @@ from tqdm import tqdm
 class OptionCritic:
     def __init__(self, env_fn, save_dir, oc_kwargs=dict(), seed=0, optimizer=RMSprop,
          replay_size=int(1e6), gamma=0.99, eps_start=1.0, eps_end=0.1, eps_decay=20000,
-         lr=1e-3, batch_size=100, update_every=50, termination_reg=0.01, act_noise=0.1,
+         lr=1e-3, batch_size=100, update_every=50, termination_reg=0.01, entropy_reg=0.01, polyak=0.995,
          freeze_interval=200, max_ep_len=1000, logger_kwargs=dict(), save_freq=1):    
         '''
         Option-Critic Architecture https://arxiv.org/abs/1609.05140
@@ -94,10 +94,10 @@ class OptionCritic:
         self.batch_size = batch_size
         self.update_every = update_every
         self.termination_reg = termination_reg
-        self.act_noise = act_noise
         self.freeze_interval = freeze_interval
         self.max_ep_len = self.env.spec.max_episode_steps if self.env.spec.max_episode_steps is not None else max_ep_len
-        self.tau = tau
+        self.polyak = polyak
+        self.entropy_reg = entropy_reg
         self.save_freq = save_freq
         self.save_dir = save_dir
         self.best_mean_reward = -np.inf
@@ -122,23 +122,22 @@ class OptionCritic:
 
         # Set up optimizers for option_critic
         self.optimizer = self.optimizer_class(self.oc.parameters(), lr=self.lr)
-
-    def get_action(self, obs, option, noise_scale):
-        '''
-        Input the current observation into the actor network to calculate action to take.
-        Args:
-            obs (numpy ndarray): Current state of the environment. Only 1 state, not a batch of states
-            option (int): current option to use
-            noise_scale (float): Stddev for Gaussian exploration noise
-        Return:
-            Action (numpy ndarray): Scaled action that is clipped to environment's action limits
-        '''
-        obs = to_tensor(obs)
+    
+    def update_target_network(self):
         with torch.no_grad():
-            action = self.oc.act(obs, option).squeeze()
-        action += noise_scale*np.random.randn(self.act_dim)
-        return np.clip(action, -self.act_limit, self.act_limit)
-        
+            for option_idx in range(len(self.oc.policies)):
+                for p, p_targ in zip(self.oc.policies[option_idx].parameters(), self.oc_targ.policies[option_idx].parameters()):
+                    # NB: We use an in-place operations "mul_", "add_" to update target
+                    # params, as opposed to "mul" and "add", which would make new tensors.
+                    p_targ.data.mul_(self.polyak)
+                    p_targ.data.add_((1 - self.polyak) * p.data)
+
+            for p, p_targ in zip(self.oc.parameters(), self.oc_targ.parameters()):
+                # NB: We use an in-place operations "mul_", "add_" to update target
+                # params, as opposed to "mul" and "add", which would make new tensors.
+                p_targ.data.mul_(self.polyak)
+                p_targ.data.add_((1 - self.polyak) * p.data)
+
     def update_critic(self, experiences):
         '''
         Do gradient updates for actor-critic models
@@ -151,10 +150,10 @@ class OptionCritic:
         obs, options, rewards, next_obs, done = experiences
         batch_idx = torch.arange(len(options)).long()
         obs = obs.to(self.device)
-        options = next_states.to(self.device)
-        rewards = actions.to(self.device)
-        next_obs = rewards.to(self.device)
-        done = terminals.to(self.device)
+        options = options.to(self.device)
+        rewards = rewards.to(self.device)
+        next_obs = next_obs.to(self.device)
+        done = done.to(self.device)
 
         states = self.oc.encode_state(obs)
         Q = self.oc.Q_omega(states)
@@ -177,11 +176,7 @@ class OptionCritic:
         # Record loss q and loss pi and qvals in the form of loss_info
         self.logger.store(TDError=td_error.item())
 
-        # update target networks
-        with torch.no_grad():
-            for p, p_targ in zip(self.oc.parameters(), self.oc_targ.parameters()):
-                p_targ.data.mul_(self.tau)
-                p_targ.data.add_((1-self.tau)*p.data)
+        self.update_target_network()
 
     def update_policies_and_terminations(self, obs, current_option, logp, entropy, reward, done, next_obs):
         '''
@@ -203,6 +198,7 @@ class OptionCritic:
             utility = (1-self.oc.get_terminations(next_obs)[:, current_option])*next_Q_omega + \
                         self.oc.get_terminations(next_obs)[:, current_option]*next_V_omega
             Q_u = reward + (1-done) * self.gamma * utility
+
         policy_loss = -logp*Q_u - self.entropy_reg * entropy # Policy gradient with entropy regularization
  
         # --------------------- Termination Loss ---------------------
@@ -210,7 +206,7 @@ class OptionCritic:
         adv = (next_Q_omega - next_V_omega + self.termination_reg).squeeze()
 
         termination_loss = next_option_term_prob * adv * (1 - done)
-        loss_pi = policy_loss + termination_loss
+        loss_pi = policy_loss.squeeze() + termination_loss
         self.optimizer.zero_grad()
         loss_pi.backward()
         self.optimizer.step()
@@ -313,7 +309,8 @@ class OptionCritic:
             
             # Until start_steps have elapsed, sample random actions from environment
             # to encourage more exploration, sample from policy network after that
-            action, logp, entropy = self.oc.get_action(obs, current_option)
+            action, logp, entropy = self.oc.get_action(to_tensor(obs), current_option)
+            action = action.detach().squeeze().cpu().numpy()
 
             # step the environment
             next_obs, reward, done, _ = self.env.step(action)
