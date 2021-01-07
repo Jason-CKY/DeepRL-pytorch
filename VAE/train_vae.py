@@ -71,7 +71,7 @@ def main():
     logger = Logger(output_dir=args.save_dir)
     frames = []
 
-    for epoch in range(1, args.epochs):
+    for epoch in range(1, args.epochs+1):
         logger.running_log_dict = {
         'elbo': 0,
         'recon_loss': 0,
