@@ -58,7 +58,7 @@ class OptionCriticVAE(nn.Module):
         act_limit = action_space.high[0]
 
         self.encoder = VAE().to(device)
-        # self.encoder.load_weights(vae_weights_path)
+        self.encoder.load_weights(vae_weights_path)
         # self.Q is the state-option value function, and the policy over option is chosen over the highest Q value
         self.Q1 = mlp([self.encoder.latent_dim] + list(hidden_sizes) + [num_options], activation).to(device)
         self.Q2 = mlp([self.encoder.latent_dim] + list(hidden_sizes) + [num_options], activation).to(device)
