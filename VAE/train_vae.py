@@ -107,7 +107,7 @@ def main():
                 vae.eval()
                 sample_images = next(iter(sample_dl)) 
                 with torch.no_grad():
-                    im = vae(sample_images)
+                    im = vae(sample_images).cpu()
                 im = torch.cat([sample_images, im], dim=0)
                 im = vutils.make_grid(im, padding=2).permute(1, 2, 0).numpy() * 0.5 + 0.5
                 im = Image.fromarray((im*255).astype(np.uint8))
