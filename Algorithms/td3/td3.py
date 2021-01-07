@@ -21,7 +21,7 @@ class TD3:
          replay_size=int(1e6), gamma=0.99, 
          tau=0.995, pi_lr=1e-3, q_lr=1e-3, batch_size=100, start_steps=10000, 
          update_after=1000, update_every=50, act_noise=0.1, num_test_episodes=10, 
-         max_ep_len=1000, logger_kwargs=dict(), save_freq=1, policy_delay=2):    
+         max_ep_len=1000, logger_kwargs=dict(), save_freq=1, policy_delay=2, ngpu=1):    
         '''
         Twin Delayed Deep Deterministic Policy Gradients (TD3):
         An Extension of DDPG but with 3 tricks added:
@@ -81,9 +81,10 @@ class TD3:
         self.act_limit = self.env.action_space.high[0]
 
         # Create actor-critic module
+        self.ngpu = ngpu
         self.actor_critic = get_actor_critic_module(ac_kwargs, 'td3')
         self.ac_kwargs = ac_kwargs
-        self.ac = self.actor_critic(self.env.observation_space, self.env.action_space, device=self.device, **ac_kwargs)
+        self.ac = self.actor_critic(self.env.observation_space, self.env.action_space, device=self.device, ngpu=self.ngpu, **ac_kwargs)
         self.ac_targ = deepcopy(self.ac)
 
         # Freeze target networks with respect to optimizers
@@ -123,7 +124,7 @@ class TD3:
         '''
         # Create actor-critic module
         self.best_mean_reward = -np.inf
-        self.ac = self.actor_critic(self.env.observation_space, self.env.action_space, device=self.device, **self.ac_kwargs)
+        self.ac = self.actor_critic(self.env.observation_space, self.env.action_space, device=self.device, ngpu=self.ngpu, **self.ac_kwargs)
         self.ac_targ = deepcopy(self.ac)
 
         # Freeze target networks with respect to optimizers
@@ -284,10 +285,10 @@ class TD3:
                 self.replay_buffer.load(os.path.join(self.save_dir, "replay_buffer.pickle"))
             key = 'cuda' if torch.cuda.is_available() else 'cpu'
             checkpoint = torch.load(checkpoint_path, map_location=key)
-            self.ac.load_state_dict(sanitise_state_dict(checkpoint['ac']))
-            self.ac_targ.load_state_dict(sanitise_state_dict(checkpoint['ac_target']))
-            self.pi_optimizer.load_state_dict(sanitise_state_dict(checkpoint['pi_optimizer']))
-            self.q_optimizer.load_state_dict(sanitise_state_dict(checkpoint['q_optimizer']))
+            self.ac.load_state_dict(sanitise_state_dict(checkpoint['ac'], self.ngpu>1))
+            self.ac_targ.load_state_dict(sanitise_state_dict(checkpoint['ac_target'], self.ngpu>1))
+            self.pi_optimizer.load_state_dict(sanitise_state_dict(checkpoint['pi_optimizer'], self.ngpu>1))
+            self.q_optimizer.load_state_dict(sanitise_state_dict(checkpoint['q_optimizer'], self.ngpu>1))
             
             env_path = os.path.join(self.save_dir, "env.json")
             if os.path.isfile(env_path):

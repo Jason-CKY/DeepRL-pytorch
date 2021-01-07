@@ -115,7 +115,6 @@ class VAE(nn.Module):
     def dataparallel(self, ngpu):
         print(f"using {ngpu} gpus, gpu id: {list(range(ngpu))}")
         self.encoder = nn.DataParallel(self.encoder, list(range(ngpu)))
-        self.decoder = nn.DataParallel(self.decoder, list(range(ngpu)))
         self.fc_mu = nn.DataParallel(self.fc_mu, list(range(ngpu)))
         self.fc_var = nn.DataParallel(self.fc_var, list(range(ngpu)))
         

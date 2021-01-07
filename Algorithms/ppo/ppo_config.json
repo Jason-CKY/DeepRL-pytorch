@@ -8,6 +8,7 @@
                             [64, 5, 2], 
                             [64, 3, 1]]
     },
+    "ngpu": 1,
     "steps_per_epoch": 1000,
     "batch_size": 128,
     "gamma": 0.99,

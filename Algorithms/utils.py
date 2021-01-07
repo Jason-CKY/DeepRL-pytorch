@@ -48,7 +48,7 @@ def get_actor_critic_module(ac_kwargs, RL_Algorithm):
     
     raise AssertionError("Invalid model_type in config.json. Choose among ['mlp', 'cnn', 'vae']")
 
-def sanitise_state_dict(state_dict):
+def sanitise_state_dict(state_dict, multi_gpu=False):
     '''
     Weights saved with nn.DataParallel wrapper cannot be loaded with a normal net
     This utility function serves to remove the module. prefix so that the state_dict can 
@@ -58,6 +58,9 @@ def sanitise_state_dict(state_dict):
     Returns:
         output_dict (OrderedDict): weights that is able to be loaded without nn.DataParallel wrapper
     '''
+    if multi_gpu:
+        return state_dict
+        
     output_dict = OrderedDict()
     for k, v in state_dict.items():
         if 'module' in k:

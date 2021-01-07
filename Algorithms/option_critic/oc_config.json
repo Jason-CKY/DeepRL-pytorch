@@ -4,16 +4,18 @@
         "vae_weights_path": "VAE/output/reach_target-vision-v0_wrist_rgb.pth",
         "hidden_sizes": [128]
     },
+    "ngpu": 1,
     "replay_size": 1e6,
     "gamma": 0.99,
     "lr": 0.0005,
     "batch_size": 5,
     "update_every": 50,
-    "act_noise": 0.1,
-    "freeze_interval": 200,
-    "max_ep_len": 100,
-    "save_freq": 1,
     "eps_start": 1.0,
     "eps_end": 0.1,
-    "eps_decay": 20000
+    "eps_decay": 20000,
+    "termination_reg": 0.01,
+    "entropy_reg": 0.2,
+    "polyak": 0.995,
+    "max_ep_len": 100,
+    "save_freq": 1
 }

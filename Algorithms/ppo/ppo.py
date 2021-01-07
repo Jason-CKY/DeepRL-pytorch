@@ -21,7 +21,7 @@ class PPO:
     def __init__(self, env_fn, save_dir, ac_kwargs=dict(), seed=0, 
          steps_per_epoch=400, batch_size=400, gamma=0.99, clip_ratio=0.2, 
          vf_lr=1e-3, pi_lr=3e-4, train_v_iters=80, train_pi_iters=80, 
-         lam=0.97, max_ep_len=1000, target_kl=0.01, logger_kwargs=dict(), save_freq=10):
+         lam=0.97, max_ep_len=1000, target_kl=0.01, logger_kwargs=dict(), save_freq=10, ngpu=1):
         """
         Proximal Policy Optimization 
         Args:
@@ -78,9 +78,10 @@ class PPO:
         self.train_pi_iters = train_pi_iters
 
         # Main network
+        self.ngpu = ngpu
         self.actor_critic = get_actor_critic_module(ac_kwargs, 'ppo')
         self.ac_kwargs = ac_kwargs
-        self.ac = self.actor_critic(self.env.observation_space, self.env.action_space, device=self.device, **ac_kwargs)
+        self.ac = self.actor_critic(self.env.observation_space, self.env.action_space, device=self.device, ngpu=self.ngpu, **ac_kwargs)
 
         # Create Optimizers
         self.v_optimizer = optim.Adam(self.ac.v.parameters(), lr=self.vf_lr)
@@ -107,7 +108,7 @@ class PPO:
 
         # Main network
         self.best_mean_reward = -np.inf
-        self.ac = self.actor_critic(self.env.observation_space, self.env.action_space, device=self.device, **self.ac_kwargs)
+        self.ac = self.actor_critic(self.env.observation_space, self.env.action_space, device=self.device, ngpu=self.ngpu, **self.ac_kwargs)
 
         # Create Optimizers
         self.v_optimizer = optim.Adam(self.ac.v.parameters(), lr=self.vf_lr)
@@ -202,10 +203,10 @@ class PPO:
         if os.path.isfile(checkpoint_path):
             key = 'cuda' if torch.cuda.is_available() else 'cpu'
             checkpoint = torch.load(checkpoint_path, map_location=key)
-            self.ac.v.load_state_dict(sanitise_state_dict(checkpoint['v']))
-            self.ac.pi.load_state_dict(sanitise_state_dict(checkpoint['pi']))
-            self.v_optimizer.load_state_dict(sanitise_state_dict(checkpoint['v_optimizer']))
-            self.pi_optimizer.load_state_dict(sanitise_state_dict(checkpoint['pi_optimizer']))
+            self.ac.v.load_state_dict(sanitise_state_dict(checkpoint['v'], self.ngpu>1))
+            self.ac.pi.load_state_dict(sanitise_state_dict(checkpoint['pi'], self.ngpu>1))
+            self.v_optimizer.load_state_dict(sanitise_state_dict(checkpoint['v_optimizer'], self.ngpu>1))
+            self.pi_optimizer.load_state_dict(sanitise_state_dict(checkpoint['pi_optimizer'], self.ngpu>1))
 
             env_path = os.path.join(self.save_dir, "env.json")
             if os.path.isfile(env_path):
