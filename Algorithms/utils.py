@@ -73,6 +73,8 @@ def to_tensor(obs):
     '''
     Convert observation into a pytorch tensor
     '''
+    if isinstance(obs, torch.Tensor):
+        return obs
     obs = np.asarray(obs)
     obs = torch.from_numpy(obs).float()
     return obs

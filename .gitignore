@@ -1,6 +1,7 @@
 __pycache__
 .vscode
 RLBench
+dsa.py
 testcode.py
 setup.bat
 Model_Weights/reach_target-vision-v0
