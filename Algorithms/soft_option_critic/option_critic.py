@@ -6,7 +6,7 @@ import time
 import os
 import imageio
 
-from math import exp
+from torch.distributions import Categorical
 from Wrappers.normalize_observation import Normalize_Observation
 from Algorithms.soft_option_critic.core import OptionCriticVAE
 from Algorithms.utils import to_tensor, sanitise_state_dict
@@ -20,7 +20,8 @@ from itertools import chain
 class OptionCritic:
     def __init__(self, env_fn, save_dir, oc_kwargs=dict(), seed=0, optimizer=Adam,
          replay_size=int(1e6), gamma=0.99, lr=dict(), batch_size=128, update_after=int(1e4), 
-         update_every=1, alpha=1.0, polyak=0.995, max_ep_len=1000, logger_kwargs=dict(), save_freq=1, ngpu=1):    
+         update_every=1, alpha=1.0, polyak=0.995, max_ep_len=1000, logger_kwargs=dict(), 
+         lambda_1=1, lambda_2=5, save_freq=1, ngpu=1):    
         '''
         Option-Critic Architecture https://arxiv.org/abs/1609.05140
         Args:
@@ -106,6 +107,9 @@ class OptionCritic:
         self.batch_size = batch_size
         self.update_after = update_after
         self.update_every = update_every
+        self.mutual_info_weight = lambda_1
+        self.noise_influence_weight = lambda_2
+
         self.alpha = alpha
         self.max_ep_len = self.env.spec.max_episode_steps if self.env.spec.max_episode_steps is not None else max_ep_len
         self.polyak = polyak
@@ -169,17 +173,32 @@ class OptionCritic:
         next_obs = next_obs.to(self.device)
         logp_actions = logp_actions.to(self.device)
         # ------------------ TODO: optimizing U-value functions ------------------------------
-        # Q1_estimation = rewards + self.alpha
-        # loss_Q1 = 0.5*(self.oc.Q1(obs, options, actions) - Q1_estimation).mean()
+        p_next_options = self.oc_targ.pi_high(next_obs, options)
+        next_options = Categorical(probs=p_next_options).sample()
+
+        MI = self.mutual_info(options, obs, actions)    # TODO
+        TV_distance = self.TV_distance()                # TODO
+        logp = self.get_logp_options() # logp(z | s, a)
+        V_next = torch.min(self.oc_targ.get_U1(next_obs, next_options), self.oc_targ.get_U2(next_obs, next_options)) - self.alpha*torch.log(p_next_options)
+        Q_estimation = rewards + self.alpha*(self.mutual_info_weight*MI - self.noise_influence_weight*TV_distance - logp) \
+                                + self.gamma*V_next
+
+        loss_Q1 = 0.5*((self.oc.Q1(obs, options, actions) - Q_estimation)**2).mean()
+        loss_Q2 = 0.5*((self.oc.Q2(obs, options, actions) - Q_estimation)**2).mean()
+        loss_Q = loss_Q1 + loss_Q2
+        self.optimizers['Q'].zero_grad()
+        loss_Q.backward()
+        self.optimizers['Q'].step()
+        
 
         # ------------------ optimizing U-value functions ------------------------------
         Q1_current = self.oc.get_Q1(obs, options, actions)
         Q2_current = self.oc.get_Q2(obs, options, actions)
         # logp_actions = self.oc.get_action_logp(obs, options, actions)
-        loss_U1 = 0.5*(self.oc.get_U1(obs, options) - (torch.min(Q1_current, 
-                    Q2_current) - self.alpha*logp_actions)).mean()
-        loss_U2 = 0.5*(self.oc.get_U2(obs, options) - (torch.min(Q1_current, 
-                    Q2_current) - self.alpha*logp_actions)).mean()
+        loss_U1 = 0.5*((self.oc.get_U1(obs, options) - (torch.min(Q1_current, 
+                    Q2_current) - self.alpha*logp_actions))**2).mean()
+        loss_U2 = 0.5*((self.oc.get_U2(obs, options) - (torch.min(Q1_current, 
+                    Q2_current) - self.alpha*logp_actions))**2).mean()
 
         loss_U = loss_U1 + loss_U2
         self.optimizers['U'].zero_grad()
