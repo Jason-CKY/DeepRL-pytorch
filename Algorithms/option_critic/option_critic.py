@@ -1,26 +1,23 @@
-import gym
-import pybullet_envs
 import torch
 import numpy as np
-import time
 import os
 import imageio
 
 from math import exp
-from Wrappers.normalize_observation import Normalize_Observation
-from Algorithms.option_critic.core import OptionCriticVAE
-from Algorithms.utils import to_tensor, sanitise_state_dict
+from Algorithms.utils import to_tensor, sanitise_state_dict, get_actor_critic_module
 from Algorithms.option_critic.replay_buffer import ReplayBuffer
 from Logger.logger import Logger
 from copy import deepcopy
-from torch.optim import Adam, RMSprop
+from torch.optim import Adam
 from tqdm import tqdm
+from gym.spaces import Discrete
+from itertools import chain
 
 class OptionCritic:
-    def __init__(self, env_fn, save_dir, oc_kwargs=dict(), seed=0, optimizer=RMSprop,
+    def __init__(self, env_fn, save_dir, oc_kwargs=dict(), seed=0, optimizer=Adam,
          replay_size=int(1e6), gamma=0.99, eps_start=1.0, eps_end=0.1, eps_decay=20000,
-         lr=1e-3, batch_size=100, update_every=50, termination_reg=0.01, entropy_reg=0.2, polyak=0.995,
-         max_ep_len=1000, logger_kwargs=dict(), save_freq=1, ngpu=1):    
+         lr=1e-3, batch_size=100, update_frequency=4, termination_reg=0.01, entropy_reg=0.2, load_path=None,
+         max_ep_len=1000, freeze_interval=200, logger_kwargs=dict(), save_freq=1, ngpu=1):    
         '''
         Option-Critic Architecture https://arxiv.org/abs/1609.05140
         Args:
@@ -39,7 +36,7 @@ class OptionCritic:
             eps_decay (int): number of timesteps to decay eps from eps_start to eps_end
             lr (float): Learning rate for OptionCritic as they share parameters
             batch_size (int): Batch size for learning
-            update_every (int): Number of env interactions that should elapse
+            update_frequency (int): Number of env interactions that should elapse
                 between gradient descent updates. Note: Regardless of how long 
                 you wait between updates, the ratio of env steps to gradient steps 
                 is locked to 1.
@@ -64,17 +61,15 @@ class OptionCritic:
         # self.device = "cpu"
         self.env = env_fn()
 
-        # Action Limit for clamping
-        self.act_limit = self.env.action_space.high[0]
-        self.act_dim = self.env.action_space.shape[0]
-
         # Create actor-critic module
         self.ngpu = ngpu
-        self.option_critic = OptionCriticVAE
         self.oc_kwargs = oc_kwargs
+        self.option_critic = get_actor_critic_module(self.oc_kwargs, 'option_critic')
         self.oc = self.option_critic(self.env.observation_space, self.env.action_space, device=self.device, ngpu=self.ngpu, **oc_kwargs)
-        self.oc_targ = deepcopy(self.oc)
+        if load_path is not None:
+            self.load_weights(load_path)
 
+        self.oc_targ = deepcopy(self.oc)
         # Freeze target networks with respect to optimizers
         for p in self.oc_targ.parameters():
             p.requires_grad = False
@@ -93,10 +88,11 @@ class OptionCritic:
         self.eps_end = eps_end
         self.eps_decay = eps_decay
         self.batch_size = batch_size
-        self.update_every = update_every
+        self.update_frequency = update_frequency
+        self.freeze_interval = freeze_interval
         self.termination_reg = termination_reg
         self.max_ep_len = self.env.spec.max_episode_steps if self.env.spec.max_episode_steps is not None else max_ep_len
-        self.polyak = polyak
+        # self.polyak = polyak
         self.entropy_reg = entropy_reg
         self.save_freq = save_freq
         self.save_dir = save_dir
@@ -121,24 +117,14 @@ class OptionCritic:
 
         # Set up optimizers for option_critic
         self.optimizer = self.optimizer_class(self.oc.parameters(), lr=self.lr)
-    
-    def update_target_network(self):
-        with torch.no_grad():
-            for p, p_targ in zip(self.oc.parameters(), self.oc_targ.parameters()):
-                # NB: We use an in-place operations "mul_", "add_" to update target
-                # params, as opposed to "mul" and "add", which would make new tensors.
-                p_targ.data.mul_(self.polyak)
-                p_targ.data.add_((1 - self.polyak) * p.data)
-
-    def sac_update(self, experiences):
+   
+    def get_critic_loss(self, experiences):
         '''
         Do gradient updates for actor-critic models
         Args:
-            experiences: sampled s, a, r, s', terminals from replay buffer.
+            experiences: sampled s, w, r, s', terminals from replay buffer.
         '''
         # Get states, action, rewards, next_states, terminals from experiences
-        self.oc.train()
-        self.oc_targ.train()
         obs, options, rewards, next_obs, done = experiences
         batch_idx = torch.arange(len(options)).long()
         obs = obs.to(self.device)
@@ -147,55 +133,55 @@ class OptionCritic:
         next_obs = next_obs.to(self.device)
         done = done.to(self.device)
 
-        states = self.oc.encode_state(obs)
-        pi, logp = self.oc.policies(states, options)
+        # The loss is the TD loss of Q and the update target, so we need to calculate Q
+        states = self.oc.encode_state(to_tensor(obs))
+        Q      = self.oc.get_Q(states)
+        
+        # the update target contains Q_next, but for stable learning we use prime network for this
+        next_states_prime = self.oc_targ.encode_state(to_tensor(next_obs))
+        next_Q_prime      = self.oc_targ.get_Q(next_states_prime) # detach?
 
-        # --------------------- Option Policy Loss ---------------------
-        next_option_term_prob = self.oc.get_terminations(next_obs)[batch_idx, options]
-        next_states = self.oc_targ.encode_state(next_obs)
-        next_Q1 = self.oc_targ.Q1(next_states)
-        next_V1_omega = next_Q1.max(dim=-1).values
-        next_Q1_omega = next_Q1[batch_idx, options]
+        # Additionally, we need the beta probabilities of the next state
+        next_states            = self.oc.encode_state(to_tensor(next_obs))
+        next_termination_probs = self.oc.get_terminations(next_states).detach()
+        next_options_term_prob = next_termination_probs[batch_idx, options]
 
-        utility = (1-next_option_term_prob)*next_Q1_omega + \
-                    next_option_term_prob*next_V1_omega
-        Q1_u = rewards + (1-done) * self.gamma * utility
+        # Now we can calculate the update target gt
+        gt = rewards + (1-done) * self.gamma * \
+            ((1 - next_options_term_prob) * next_Q_prime[batch_idx, options] + next_options_term_prob  * next_Q_prime.max(dim=-1)[0])
 
-        next_Q2 = self.oc_targ.Q2(next_states)
-        next_V2_omega = next_Q2.max(dim=-1).values
-        next_Q2_omega = next_Q2[batch_idx, options]
+        # to update Q we want to use the actual network, not the prime
+        td_err = (Q[batch_idx, options] - gt.detach()).pow(2).mul(0.5).mean()
+        self.logger.store(loss_Q=td_err)
+        return td_err
 
-        utility = (1-next_option_term_prob)*next_Q2_omega + \
-                    next_option_term_prob*next_V2_omega
-        Q2_u = rewards + (1-done) * self.gamma * utility
+    def get_pi_loss(self, obs, option, logp, entropy, reward, done, next_obs):
+        state = self.oc.encode_state(to_tensor(obs))
+        next_state = self.oc.encode_state(to_tensor(next_obs))
+        next_state_prime = self.oc_targ.encode_state(to_tensor(next_obs))
 
-        q_pi = torch.min(Q1_u, Q2_u)
-        policy_loss = (self.entropy_reg*logp - q_pi.detach()).mean() # SAC Policy gradient with entropy regularization
- 
-        # --------------------- Termination Loss ---------------------
-        next_Q_omega = torch.min(next_Q1_omega, next_Q2_omega)
-        next_V_omega = torch.min(next_V1_omega, next_V2_omega)
-        adv = (next_Q_omega - next_V_omega + self.termination_reg)
+        option_term_prob = self.oc.get_terminations(state)[option]
+        next_option_term_prob = self.oc.get_terminations(next_state)[option].detach()
 
-        termination_loss = (next_option_term_prob * adv.detach() * (1 - done)).mean()
-        loss_pi = policy_loss + termination_loss
+        Q = self.oc.get_Q(state).detach().squeeze()
+        next_Q_prime = self.oc_targ.get_Q(next_state_prime).detach().squeeze()
 
-        # ------------------------- TD error update -----------------------------------       
-        loss_q1 = ((self.oc.Q1(states)[batch_idx, options] - Q1_u.detach())**2).mean()
-        loss_q2 = ((self.oc.Q2(states)[batch_idx, options] - Q2_u.detach())**2).mean()
-        loss_q = loss_q1 + loss_q2
+        # Target update gt
+        gt = reward + (1 - done) * self.gamma * \
+            ((1 - next_option_term_prob) * next_Q_prime[option] + next_option_term_prob  * next_Q_prime.max(dim=-1)[0])
 
-        # ------------------------- Update weights -------------------------------------
-        self.optimizer.zero_grad()
-        loss = loss_pi + loss_q
-        loss.backward()
-        self.optimizer.step()
+        # The termination loss
+        termination_loss = option_term_prob * (Q[option] - Q.max(dim=-1)[0] + self.termination_reg) * (1 - done)
+        termination_loss = termination_loss.mean()
+        
+        # actor-critic policy gradient with entropy regularization
+        policy_loss = -logp * (gt.detach() - Q[option]) 
+        policy_loss = policy_loss - self.entropy_reg * entropy if isinstance(self.env.action_space, Discrete) else policy_loss
+        policy_loss = policy_loss.mean()
+        loss = policy_loss + termination_loss
+        self.logger.store(termination_loss=termination_loss.item(), policy_loss=policy_loss.item())
 
-        # Record loss q and loss pi and qvals in the form of loss_info
-        self.logger.store(loss_q1=loss_q1.item(), loss_q2=loss_q2.item, loss_q = loss_q.item(),
-                            policy_loss=policy_loss.item(), termination_loss=termination_loss.item())
-
-        self.update_target_network()
+        return loss
 
     def evaluate_agent(self):
         '''
@@ -209,7 +195,7 @@ class OptionCritic:
             state, done, ep_ret, ep_len = self.env.reset(), False, 0, 0
             while not (done or (ep_len==self.max_ep_len)):
                 # Take deterministic action with 0 noise added
-                state, reward, done, _ = self.env.step(self.get_action(state, 0))
+                state, reward, done, _ = self.env.step(self.oc.get_action(state, 0))
                 ep_ret += reward
                 ep_len += 1
             self.logger.store(TestEpRet=ep_ret, TestEpLen=ep_len)
@@ -233,26 +219,29 @@ class OptionCritic:
         print('saving checkpoint...')
         checkpoint = {
             'oc': self.oc.state_dict(),
-            'oc_target': self.oc_targ.state_dict(),
-            'optimizer': self.optimizer.state_dict()
+            'oc_target': self.oc_targ.state_dict()
         }
         torch.save(checkpoint, os.path.join(self.save_dir, _fname))
         self.replay_buffer.save(os.path.join(self.save_dir, "replay_buffer.pickle"))
         self.env.save(os.path.join(self.save_dir, "env.json"))
         print(f"checkpoint saved at {os.path.join(self.save_dir, _fname)}")
 
-    def load_weights(self, best=True, load_buffer=True):
+    def load_weights(self, path=None, best=True, load_buffer=True):
         '''
         Load the model weights and replay buffer from self.save_dir
         Args:
             best (bool): If True, save from the weights file with the best mean episode reward
             load_buffer (bool): If True, load the replay buffer from the pickled file
         '''
-        if best:
-            fname = "best.pth"
+        if path is None:
+            if best:
+                fname = "best.pth"
+            else:
+                fname = "model_weights.pth"
+            checkpoint_path = os.path.join(self.save_dir, fname)
         else:
-            fname = "model_weights.pth"
-        checkpoint_path = os.path.join(self.save_dir, fname)
+            checkpoint_path = path
+
         if os.path.isfile(checkpoint_path):
             if load_buffer:
                 self.replay_buffer.load(os.path.join(self.save_dir, "replay_buffer.pickle"))
@@ -260,7 +249,6 @@ class OptionCritic:
             checkpoint = torch.load(checkpoint_path, map_location=key)
             self.oc.load_state_dict(sanitise_state_dict(checkpoint['oc'], self.ngpu>1))
             self.oc_targ.load_state_dict(sanitise_state_dict(checkpoint['oc_target'], self.ngpu>1))
-            self.optimizer.load_state_dict(sanitise_state_dict(checkpoint['optimizer'], self.ngpu>1))
 
             env_path = os.path.join(self.save_dir, "env.json")
             if os.path.isfile(env_path):
@@ -293,7 +281,7 @@ class OptionCritic:
             
             # Until start_steps have elapsed, sample random actions from environment
             # to encourage more exploration, sample from policy network after that
-            action = self.oc.get_action(to_tensor(obs), current_option)
+            action, logp, entropy = self.oc.get_action(to_tensor(obs), current_option)
 
             # step the environment
             next_obs, reward, done, _ = self.env.step(action)
@@ -310,16 +298,23 @@ class OptionCritic:
             obs = next_obs
             option_termination = self.oc.predict_option_termination(to_tensor(obs), current_option)
 
-            if self.replay_buffer.size() >= self.batch_size and timestep%self.update_every==0:
-                for _ in range(self.update_every):
+            if self.replay_buffer.size() >= self.batch_size:
+                loss = self.get_pi_loss(obs, current_option, logp, entropy, reward, done, next_obs)
+                if timestep%self.update_frequency==0:
                     experiences = self.replay_buffer.sample(self.batch_size)
-                    self.sac_update(experiences)
+                    loss += self.get_critic_loss(experiences)
+                self.optimizer.zero_grad()
+                loss.backward()
+                self.optimizer.step()
+            
+            if timestep % self.freeze_interval == 0:
+                self.oc_targ.load_state_dict(self.oc.state_dict())
             
             # End of trajectory/episode handling
             if done or (ep_len==self.max_ep_len):
                 self.logger.store(EpRet=ep_ret, EpLen=ep_len, OptLen=option_lengths)
-                print(f"Episode reward: {ep_ret} | Episode Length: {ep_len}")
-                state, ep_ret, ep_len = self.env.reset(), 0, 0
+                # print(f"Episode reward: {ep_ret} | Episode Length: {ep_len}")
+                obs, ep_ret, ep_len = self.env.reset(), 0, 0
                 option_lengths = {opt:[] for opt in range(self.oc.num_options)}
                 episode += 1
                 # Retrieve training reward
@@ -378,15 +373,19 @@ class OptionCritic:
         self.env.training=False
         if render:
             self.env.render('human')
-        state, done, ep_ret, ep_len = self.env.reset(), False, 0, 0
+        obs, ep_ret, ep_len, option_termination = self.env.reset(), 0, 0, True
+        done = False
+        current_option = 0
         img = []
         if record:
             img.append(self.env.render('rgb_array'))
 
         if timesteps is not None:
             for i in range(timesteps):
-                # Take deterministic action with 0 noise added
-                state, reward, done, _ = self.env.step(self.get_action(state, 0))
+                if option_termination:
+                    current_option = self.oc.get_option(obs, 0, greedy=True)
+                obs, reward, done, _ = self.env.step(self.oc.get_action(obs, current_option))
+                option_termination = self.oc.predict_option_termination(to_tensor(obs), current_option)
                 if record:
                     img.append(self.env.render('rgb_array'))
                 else:
@@ -395,8 +394,10 @@ class OptionCritic:
                 ep_len += 1                
         else:
             while not (done or (ep_len==self.max_ep_len)):
-                # Take deterministic action with 0 noise added
-                state, reward, done, _ = self.env.step(self.get_action(state, 0))
+                if option_termination:
+                    current_option = self.oc.get_option(obs, 0, greedy=True)
+                obs, reward, done, _ = self.env.step(self.oc.get_action(obs, current_option))
+                option_termination = self.oc.predict_option_termination(to_tensor(obs), current_option)
                 if record:
                     img.append(self.env.render('rgb_array'))
                 else:

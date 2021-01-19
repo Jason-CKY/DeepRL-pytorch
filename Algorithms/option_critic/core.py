@@ -2,82 +2,131 @@ import torch
 import torch.nn as nn
 import numpy as np
 from Algorithms.body import mlp, cnn, VAE
+from gym.spaces import Box, Discrete
 from torch.distributions import Categorical, Bernoulli, Normal
 from torch.nn import functional as F
 
-class Option_Actor(nn.Module):
-    def __init__(self, state_dim, hidden_sizes, act_dim, num_options, 
-                activation, act_limit, log_std_min=-20, log_std_max=2):
+class MLPCategoricalActor(nn.Module):
+    '''
+    Actor network for discrete outputs
+    '''
+    def __init__(self, state_dim, act_dim, hidden_sizes, num_options, activation=nn.ReLU):
+        '''
+        A Multi-Layer Perceptron for the Critic network
+        Args:
+            state_dim (int): observation dimension of the environment
+            act_dim (int): action dimension of the environment
+            hidden_sizes (list): list of number of neurons in each layer of MLP
+            activation (nn.modules.activation): Activation function for each layer of MLP
+        '''
         super().__init__()
-        self.act_limit = act_limit
-        self.log_std_min = log_std_min
-        self.log_std_max = log_std_max
         self.num_options = num_options
         self.act_dim = act_dim
+        self.logits_net = mlp([state_dim] + list(hidden_sizes) + [act_dim*num_options], activation)
+        # initialise actor network final layer weights to be 1/100 of other weights
+        self.logits_net[-2].weight.data /= 100 # last layer is Identity, so we tweak second last layer weights
 
-        self.fc_mu = mlp([state_dim] + list(hidden_sizes) + [num_options*act_dim], activation)
-        self.fc_std = mlp([state_dim] + list(hidden_sizes) + [num_options*act_dim], activation)
-    
-    def forward(self, states, options):
-        batch_idx = torch.arange(len(options))
-        mu, log_std = self.fc_mu(states), self.fc_std(states)
-        mu = mu.view(-1, self.num_options, self.act_dim)
-        log_std = log_std.view(-1, self.num_options, self.act_dim)
+    def forward(self, state, option):
+        logits = self.logits_net(state).view(-1, self.num_options, self.act_dim)
+        try:
+            logits = logits[torch.arange(len(option)), option]
+        except TypeError:
+            logits = logits[:, option]
 
-        mu = mu[batch_idx, options, :]
-        log_std = log_std[batch_idx, options, :]
+        dist = Categorical(logits=logits)
+        action = dist.sample()
+        logp, entropy = dist.log_prob(action), dist.entropy()
+
+        return action.squeeze().cpu().numpy(), logp.squeeze(), entropy.squeeze()
+
+class MLPGaussianActor(nn.Module):
+    '''
+    Actor network for discrete outputs
+    '''
+    def __init__(self, state_dim, act_dim, hidden_sizes, num_options, act_limit, activation=nn.ReLU):
+        '''
+        A Multi-Layer Perceptron for the Critic network
+        Args:
+            state_dim (int): observation dimension of the environment
+            act_dim (int): action dimension of the environment
+            hidden_sizes (list): list of number of neurons in each layer of MLP
+            activation (nn.modules.activation): Activation function for each layer of MLP
+        '''
+        super().__init__()
+        self.num_options = num_options
+        self.act_dim = act_dim
+        self.act_limit = act_limit
+        self.mu_net = mlp([state_dim] + list(hidden_sizes) + [act_dim*num_options], activation)
+        self.log_std_net_net = mlp([state_dim] + list(hidden_sizes) + [act_dim*num_options], activation)
+        # initialise actor network final layer weights to be 1/100 of other weights
+        self.mu_net[-2].weight.data /= 100 # last layer is Identity, so we tweak second last layer weights
+        self.log_std_net_net[-2].weight.data /= 100 # last layer is Identity, so we tweak second last layer weights
+        self.log_std_min = -20
+        self.log_std_max = 2
+
+    def forward(self, state, option):
+        mu = self.mu_net(state).view(-1, self.num_options, self.act_dim)
+        log_std = self.log_std_net_net(state).view(-1, self.num_options, self.act_dim)
+        log_std = torch.clamp(log_std, self.log_std_min, self.log_std_max)
         std = torch.exp(log_std)
-        pi_distribution = Normal(mu, std)
-        
+        try:
+            mu = mu[torch.arange(len(option)), option]
+            std = std[torch.arange(len(option)), option]
+        except TypeError:
+            mu = mu[:, option]
+            std = std[:, option]
+
         if self.training:
-            pi_action = pi_distribution.rsample()
+            dist = Normal(mu, std)
+            action = dist.rsample()
+            # compute logp and do Tanh squashing
+            logp = dist.log_prob(action).sum(axis=-1)
+            logp -= (2*(np.log(2) - action - F.softplus(-2*action))).sum(axis=1)
+            entropy = dist.entropy()
         else:
-            pi_action = mu
+            action = mu
+            logp, entropy = None, None
 
-        logp_pi = pi_distribution.log_prob(pi_action).sum(axis=-1)
-        # correction for tanh squashing
-        logp_pi -= (2*(np.log(2) - pi_action - F.softplus(-2*pi_action))).sum(axis=1)
+        action = torch.tanh(action)
+        action = self.act_limit * action
+        return action.squeeze().detach().cpu().numpy(), logp.squeeze(), entropy.squeeze()
 
-        pi_action = torch.tanh(pi_action)
-        pi_action = self.act_limit * pi_action
-
-        return pi_action, logp_pi              
-
-class OptionCriticVAE(nn.Module):
+class OptionCriticFeatures(nn.Module):
     '''
-    Option-Critic Framework, using pre-trained VAE as the encoder, and a SAC updates for value function and 
-    intra-option policy.
-
-    Note that many repos online uses a stochastic policy and correspondingly using on-policy gradient methods.
+    Option-Critic Framework, using shared dense layers as the encoder.
     '''
-    def __init__(self, observation_space, action_space, num_options, vae_weights_path,
+    def __init__(self, observation_space, action_space, num_options,
     hidden_sizes=(256,), activation=nn.ReLU, device='cpu', ngpu=1, **kwargs):
         super().__init__()
-        obs_dim = observation_space.shape
-        act_dim = action_space.shape[0]
-        act_limit = action_space.high[0]
+        self.action_space = action_space
+        obs_dim = observation_space.shape[0]
+        self.num_options = num_options
+        if isinstance(self.action_space, Box):
+            self.act_dim = action_space.shape[0]
+            self.act_limit = action_space.high[0]
+        else:
+            self.act_dim = action_space.n
 
-        self.encoder = VAE().to(device)
-        self.encoder.load_weights(vae_weights_path)
+        self.encoder = mlp([obs_dim] + list(hidden_sizes), activation).to(device)
         # self.Q is the state-option value function, and the policy over option is chosen over the highest Q value
-        self.Q1 = mlp([self.encoder.latent_dim] + list(hidden_sizes) + [num_options], activation).to(device)
-        self.Q2 = mlp([self.encoder.latent_dim] + list(hidden_sizes) + [num_options], activation).to(device)
-        self.terminations = mlp([self.encoder.latent_dim] + list(hidden_sizes) + [num_options], 
-                                activation, output_activation=nn.Sigmoid).to(device)
-        self.policies = Option_Actor(self.encoder.latent_dim, hidden_sizes, act_dim, num_options, 
-                        activation, act_limit).to(device)
+        self.Q = mlp([ hidden_sizes[-1] ] + [num_options], activation).to(device)
+        self.terminations = mlp([ hidden_sizes[-1] ] + [num_options], activation, output_activation=nn.Sigmoid).to(device)
+        # self.pi = mlp([ hidden_sizes[-1] ]+[self.num_options*self.act_dim], activation).to(device)
+        if isinstance(self.action_space, Box):
+            self.pi = MLPGaussianActor(hidden_sizes[-1], self.act_dim, hidden_sizes, num_options, self.act_limit, activation).to(device)
+
+        elif isinstance(self.action_space, Discrete):
+            self.pi = MLPCategoricalActor(hidden_sizes[-1], self.act_dim, hidden_sizes, num_options, activation).to(device)
 
         self.to(device)
-        self.num_options = num_options
         self.device = device
 
         self.ngpu = ngpu
         if self.ngpu > 1:
-            self.encoder.dataparallel(self.ngpu)
-            self.Q1 = nn.DataParallel(self.Q1, list(range(ngpu)))
-            self.Q2 = nn.DataParallel(self.Q2, list(range(ngpu)))
+            self.encoder = nn.DataParallel(self.encoder, list(range(ngpu)))
+            self.Q = nn.DataParallel(self.Q, list(range(ngpu)))
             self.terminations = nn.DataParallel(self.terminations, list(range(ngpu)))
-            self.policies = nn.DataParallel(self.policies, list(range(ngpu)))
+            self.pi = nn.DataParallel(self.pi, list(range(ngpu)))
 
     def encode_state(self, obs):
         '''
@@ -88,8 +137,6 @@ class OptionCriticVAE(nn.Module):
             state (torch.Tensor): output of pre-trained VAE
         '''
         obs = obs.to(self.device)
-        if obs.ndim < 4:
-            obs = obs.unsqueeze(0)
         state = self.encoder(obs)
         return state
         
@@ -107,12 +154,7 @@ class OptionCriticVAE(nn.Module):
         with torch.no_grad():
             obs = obs.to(self.device)
             state = self.encode_state(obs)
-            q1 = self.Q1(state).max(dim=-1).values
-            q2 = self.Q2(state).max(dim=-1).values
-            if q1 < q2:
-                greedy_option = self.Q1(state).argmax(dim=-1).item()
-            else:
-                greedy_option = self.Q2(state).argmax(dim=-1).item()
+            greedy_option = self.Q(state).argmax(dim=-1).item()
 
         if greedy:
             return greedy_option
@@ -130,22 +172,10 @@ class OptionCriticVAE(nn.Module):
         with torch.no_grad():
             obs = obs.to(self.device)
             state = self.encode_state(obs)
-            terminations = self.terminations(state)[:, current_option]
+            terminations = self.terminations(state)[current_option]
             option_termination = Bernoulli(probs=terminations).sample()
 
         return bool(option_termination.item())
-
-    def get_terminations(self, obs):
-        '''
-        Pass current observation and option to the termination network
-        Args:
-            obs (torch.Tensor): Given input observation
-        '''
-        obs = obs.to(self.device)
-        state = self.encode_state(obs)
-        terminations = self.terminations(state)
-
-        return terminations
 
     def get_action(self, obs, current_option):
         '''
@@ -156,9 +186,27 @@ class OptionCriticVAE(nn.Module):
         Return:
             action (numpy ndarray): Action to take
         '''
-        with torch.no_grad():
-            obs = obs.to(self.device)
-            state = self.encode_state(obs)
-            action, _ = self.policies(state, [current_option])
+        obs = obs.to(self.device)
+        state = self.encode_state(obs)
+        action, logp, entropy = self.pi(state, current_option)
+        if action.ndim == 0 and not isinstance(self.action_space, Discrete):
+            action = np.expand_dims(action, 0)
+        return action, logp, entropy
 
-        return action.squeeze().cpu().numpy()
+    def get_terminations(self, states):
+        '''
+        Pass current observation and option to the termination network
+        Args:
+            obs (torch.Tensor): Given input observation
+        '''
+        terminations = self.terminations(states)
+        return terminations
+
+    def get_Q(self, states):
+        '''
+        Pass current observation and option to the termination network
+        Args:
+            obs (torch.Tensor): Given input observation
+        '''
+        Q = self.Q(states)
+        return Q

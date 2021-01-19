@@ -40,22 +40,19 @@ class ReplayBuffer:
         sample = random.sample(self.buffer, batch_size)
         states = []
         options = []
-        # actions = []
         rewards = []
-        terminals = []
         next_states = []
+        terminals = []
         for experience in sample:
             state, option, reward, next_state, terminal = experience
             states.append(state)
             options.append(option)
-            # actions.append(action)
             rewards.append(reward)
-            terminals.append(terminal)
             next_states.append(next_state)
+            terminals.append(terminal)
         
         states = torch.as_tensor(states, dtype=torch.float32)
         options = torch.as_tensor(options, dtype=torch.long)
-        # actions = torch.as_tensor(actions, dtype=torch.float32)
         rewards = torch.as_tensor(rewards, dtype=torch.float32)
         next_states = torch.as_tensor(next_states, dtype=torch.float32)
         terminals = torch.as_tensor(terminals, dtype=torch.float32)

@@ -17,6 +17,9 @@ def get_actor_critic_module(ac_kwargs, RL_Algorithm):
         elif RL_Algorithm.lower() == 'ppo':
             from Algorithms.ppo.core import MLPActorCritic            
             return MLPActorCritic
+        elif RL_Algorithm.lower() == 'option_critic':
+            from Algorithms.option_critic.core import OptionCriticFeatures
+            return OptionCriticFeatures
 
     elif ac_kwargs['model_type'].lower() == 'cnn':
         if RL_Algorithm.lower() == 'ddpg':
