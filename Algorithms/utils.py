@@ -1,7 +1,6 @@
 import numpy as np
 import torch
 from collections import OrderedDict
-from Algorithms.ddpg.core import MLPActorCritic, CNNActorCritic
 
 def get_actor_critic_module(ac_kwargs, RL_Algorithm):
     if ac_kwargs['model_type'].lower() == 'mlp':
@@ -48,6 +47,9 @@ def get_actor_critic_module(ac_kwargs, RL_Algorithm):
         elif RL_Algorithm.lower() == 'ppo':
             from Algorithms.ppo.core import VAEActorCritic            
             return VAEActorCritic
+        elif RL_Algorithm.lower() == 'option_critic':
+            from Algorithms.option_critic.core import OptionCriticVAE
+            return OptionCriticVAE
     
     raise AssertionError("Invalid model_type in config.json. Choose among ['mlp', 'cnn', 'vae']")
 

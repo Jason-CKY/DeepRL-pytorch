@@ -2,6 +2,7 @@ import torch
 import numpy as np
 import os
 import imageio
+import torch.nn as nn
 
 from math import exp
 from Algorithms.utils import to_tensor, sanitise_state_dict, get_actor_critic_module
@@ -17,7 +18,7 @@ class OptionCritic:
     def __init__(self, env_fn, save_dir, oc_kwargs=dict(), seed=0, optimizer=Adam,
          replay_size=int(1e6), gamma=0.99, eps_start=1.0, eps_end=0.1, eps_decay=20000,
          lr=1e-3, batch_size=100, update_frequency=4, termination_reg=0.01, entropy_reg=0.2, load_path=None,
-         max_ep_len=1000, freeze_interval=200, logger_kwargs=dict(), save_freq=1, ngpu=1):    
+         max_ep_len=1000, freeze_interval=200, logger_kwargs=dict(), gradient_clip=5, save_freq=1, ngpu=1):    
         '''
         Option-Critic Architecture https://arxiv.org/abs/1609.05140
         Args:
@@ -89,6 +90,7 @@ class OptionCritic:
         self.eps_decay = eps_decay
         self.batch_size = batch_size
         self.update_frequency = update_frequency
+        self.gradient_clip = gradient_clip
         self.freeze_interval = freeze_interval
         self.termination_reg = termination_reg
         self.max_ep_len = self.env.spec.max_episode_steps if self.env.spec.max_episode_steps is not None else max_ep_len
@@ -160,8 +162,8 @@ class OptionCritic:
         next_state = self.oc.encode_state(to_tensor(next_obs))
         next_state_prime = self.oc_targ.encode_state(to_tensor(next_obs))
 
-        option_term_prob = self.oc.get_terminations(state)[option]
-        next_option_term_prob = self.oc.get_terminations(next_state)[option].detach()
+        option_term_prob = self.oc.get_terminations(state).squeeze()[option]
+        next_option_term_prob = self.oc.get_terminations(next_state).squeeze()[option].detach()
 
         Q = self.oc.get_Q(state).detach().squeeze()
         next_Q_prime = self.oc_targ.get_Q(next_state_prime).detach().squeeze()
@@ -305,6 +307,7 @@ class OptionCritic:
                     loss += self.get_critic_loss(experiences)
                 self.optimizer.zero_grad()
                 loss.backward()
+                nn.utils.clip_grad_norm_(self.oc.parameters(), self.gradient_clip)
                 self.optimizer.step()
             
             if timestep % self.freeze_interval == 0:

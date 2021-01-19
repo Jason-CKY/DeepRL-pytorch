@@ -113,10 +113,10 @@ class OptionCriticFeatures(nn.Module):
         self.terminations = mlp([ hidden_sizes[-1] ] + [num_options], activation, output_activation=nn.Sigmoid).to(device)
         # self.pi = mlp([ hidden_sizes[-1] ]+[self.num_options*self.act_dim], activation).to(device)
         if isinstance(self.action_space, Box):
-            self.pi = MLPGaussianActor(hidden_sizes[-1], self.act_dim, hidden_sizes, num_options, self.act_limit, activation).to(device)
+            self.pi = MLPGaussianActor(hidden_sizes[-1], self.act_dim, [], num_options, self.act_limit, activation).to(device)
 
         elif isinstance(self.action_space, Discrete):
-            self.pi = MLPCategoricalActor(hidden_sizes[-1], self.act_dim, hidden_sizes, num_options, activation).to(device)
+            self.pi = MLPCategoricalActor(hidden_sizes[-1], self.act_dim, [], num_options, activation).to(device)
 
         self.to(device)
         self.device = device
@@ -173,6 +173,130 @@ class OptionCriticFeatures(nn.Module):
             obs = obs.to(self.device)
             state = self.encode_state(obs)
             terminations = self.terminations(state)[current_option]
+            option_termination = Bernoulli(probs=terminations).sample()
+
+        return bool(option_termination.item())
+
+    def get_action(self, obs, current_option):
+        '''
+        Use option actor network to predict action given current observation.
+        Args:
+            obs (toch.Tensor): Given input observation
+            current_option (int): the current option actor to use
+        Return:
+            action (numpy ndarray): Action to take
+        '''
+        obs = obs.to(self.device)
+        state = self.encode_state(obs)
+        action, logp, entropy = self.pi(state, current_option)
+        if action.ndim == 0 and not isinstance(self.action_space, Discrete):
+            action = np.expand_dims(action, 0)
+        return action, logp, entropy
+
+    def get_terminations(self, states):
+        '''
+        Pass current observation and option to the termination network
+        Args:
+            obs (torch.Tensor): Given input observation
+        '''
+        terminations = self.terminations(states)
+        return terminations
+
+    def get_Q(self, states):
+        '''
+        Pass current observation and option to the termination network
+        Args:
+            obs (torch.Tensor): Given input observation
+        '''
+        Q = self.Q(states)
+        return Q
+
+class OptionCriticVAE(nn.Module):
+    '''
+    Option-Critic Framework, using shared dense layers as the encoder.
+    '''
+    def __init__(self, observation_space, action_space, num_options,
+    hidden_sizes=(256,), activation=nn.ReLU, device='cpu', ngpu=1, vae_weights_path=None, **kwargs):
+        super().__init__()
+        self.action_space = action_space
+        self.num_options = num_options
+        if isinstance(self.action_space, Box):
+            self.act_dim = action_space.shape[0]
+            self.act_limit = action_space.high[0]
+        else:
+            self.act_dim = action_space.n
+
+        self.encoder = VAE().to(device)
+        if vae_weights_path is not None:
+            self.encoder.load_weights(vae_weights_path)
+        # self.Q is the state-option value function, and the policy over option is chosen over the highest Q value
+        self.Q = mlp([ self.encoder.latent_dim ] + [num_options], activation).to(device)
+        self.terminations = mlp([ self.encoder.latent_dim ] + [num_options], activation, output_activation=nn.Sigmoid).to(device)
+        if isinstance(self.action_space, Box):
+            self.pi = MLPGaussianActor(self.encoder.latent_dim, self.act_dim, hidden_sizes, num_options, self.act_limit, activation).to(device)
+
+        elif isinstance(self.action_space, Discrete):
+            self.pi = MLPCategoricalActor(self.encoder.latent_dim, self.act_dim, hidden_sizes, num_options, activation).to(device)
+
+        self.to(device)
+        self.device = device
+
+        self.ngpu = ngpu
+        if self.ngpu > 1:
+            self.encoder = self.encoder.dataparallel(ngpu)
+            self.Q = nn.DataParallel(self.Q, list(range(ngpu)))
+            self.terminations = nn.DataParallel(self.terminations, list(range(ngpu)))
+            self.pi = nn.DataParallel(self.pi, list(range(ngpu)))
+
+    def encode_state(self, obs):
+        '''
+        Encode the image observation through the VAE encoder to get feature representation
+        Args:
+            obs (torch.Tensor): raw pixel input from environment
+        Returns:
+            state (torch.Tensor): output of pre-trained VAE
+        '''
+        obs = obs.to(self.device)
+        if obs.ndim < 4:
+            obs = obs.unsqueeze(0)
+        state = self.encoder(obs)
+        return state
+        
+    def get_option(self, obs, eps, greedy=False):
+        '''
+        Use the policy over option to select option based on given input observation.
+        Epsilon-greedy policy is used to select option.
+        Args:
+            obs (torch.Tensor): given input observation
+            eps (float): epsilon value to be used in the epsilon greedy policy over options
+            greedy (bool): if True, return the greedy option
+        Return:
+            option (int): return the option given by the policy over option
+        '''
+        with torch.no_grad():
+            obs = obs.to(self.device)
+            state = self.encode_state(obs)
+            greedy_option = self.Q(state).argmax(dim=-1).item()
+
+        if greedy:
+            return greedy_option
+        else:
+            return np.random.choice(self.num_options) if np.random.rand() < eps else greedy_option
+
+    def predict_option_termination(self, obs, current_option):
+        '''
+        Pass current observation and option to the termination network and use a Bernoulli Distributin sample
+        to test if option terminates.
+        Args:
+            obs (torch.Tensor): Given input observation
+            current_option (int): the current option used
+        '''
+        with torch.no_grad():
+            obs = obs.to(self.device)
+            state = self.encode_state(obs)
+            terminations = self.terminations(state).squeeze()
+            # print(terminations.shape)
+            terminations = terminations[current_option]
             option_termination = Bernoulli(probs=terminations).sample()
 
         return bool(option_termination.item())
