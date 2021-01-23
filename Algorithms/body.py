@@ -6,14 +6,11 @@ Contains the following:
     3) VAE
 '''
 import os
-import numpy as np
-import torch.nn as nn
-import torch
-import pytorch_lightning as pl
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
-from pl_bolts.models.autoencoders.components import resnet18_encoder, resnet18_decoder
+from Algorithms.utils import layer_init
+from pl_bolts.models.autoencoders.components import resnet18_encoder
 from collections import OrderedDict
 
 def mlp(sizes, activation, output_activation=nn.Identity):
@@ -60,8 +57,29 @@ def cnn(in_channels, conv_layer_sizes, activation, batchnorm=True):
 
   return nn.Sequential(*layers)
 
+class ConvBody(nn.Module):
+    def __init__(self, obs_dim, conv_layer_sizes, activation, batchnorm=True):
+        super(ConvBody, self).__init__()
+        self.net = cnn(obs_dim[0], conv_layer_sizes , activation, batchnorm=batchnorm)
+        self.latent_dim = self.calc_shape(obs_dim, self.net)
+
+    def calc_shape(self, obs_dim, cnn):
+      '''
+      Function to determine the shape of the data after the conv layers
+      to determine how many neurons for the MLP.
+      '''
+      C, H, W = obs_dim
+      dummy_input = torch.randn(1, C, H, W)
+      with torch.no_grad():
+        cnn_out = cnn(dummy_input)
+      shape = cnn_out.view(-1, ).shape[0]
+      return shape
+
+    def forward(self, x):
+        return self.net(x).view(1, -1)        
+
 class VAE(nn.Module):
-    def __init__(self, enc_out_dim=512, latent_dim=256, input_height=128, device='cpu'):
+    def __init__(self, enc_out_dim=512, latent_dim=256, load_path=None, device='cpu'):
         '''
         Identical to the VAE module in RL_VAE/vae.py, but wihtout the decoder part, for use in RL algorithms
         '''
@@ -74,6 +92,9 @@ class VAE(nn.Module):
         self.fc_mu = nn.Linear(enc_out_dim, latent_dim)
         self.fc_var = nn.Linear(enc_out_dim, latent_dim)
 
+        if load_path is not None:
+            self.load_weights(load_path)
+            
     def reparameterise(self, mu, logvar):
         if self.training:
             std = logvar.mul(0.5).exp_()
@@ -135,4 +156,25 @@ class VAE(nn.Module):
             else:
                 output_dict[k] = v
         return output_dict
-        
+
+class DummyBody(nn.Module):
+    def __init__(self, state_dim):
+        super(DummyBody, self).__init__()
+        self.latent_dim = state_dim
+
+    def forward(self, x):
+        return x
+
+class FCBody(nn.Module):
+    def __init__(self, state_dim, hidden_units=(64, 64), gate=F.relu):
+        super(FCBody, self).__init__()
+        dims = [state_dim,] + hidden_units
+        self.layers = nn.ModuleList(
+            [layer_init(nn.Linear(dim_in, dim_out)) for dim_in, dim_out in zip(dims[:-1], dims[1:])])
+        self.gate = gate
+        self.latent_dim = dims[-1]
+
+    def forward(self, x):
+        for layer in self.layers:
+            x = self.gate(layer(x))
+        return x        

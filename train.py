@@ -3,10 +3,7 @@ import pybullet_envs
 import argparse
 import os
 import json
-import torch
-import numpy as np
 
-from tqdm import tqdm
 from Wrappers.normalize_observation import Normalize_Observation
 from Wrappers.serialize_env import Serialize_Env
 from Wrappers.rlbench_wrapper import RLBench_Wrapper
@@ -82,9 +79,15 @@ def main():
             f.write(json.dumps(model_kwargs, indent=4))   
 
     elif args.agent.lower() == 'option_critic':
-        from Algorithms.option_critic.option_critic import OptionCritic
- 
-        model = OptionCritic(env_fn, save_dir, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
+        env = env_fn()
+        from gym.spaces import Box
+        if isinstance(env.action_space, Box):
+            from Algorithms.option_critic.oc_continuous import Option_Critic
+        else:
+            from Algorithms.option_critic.oc_discrete import Option_Critic
+        del env
+        model_kwargs['tensorboard_logdir'] = os.path.join("tf_logs", args.env, args.agent)
+        model = Option_Critic(env_fn, save_dir, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
         with open(os.path.join(save_dir, "option_critic_config.json"), "w") as f:
             f.write(json.dumps(model_kwargs, indent=4))   
 
