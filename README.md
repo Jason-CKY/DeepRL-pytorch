@@ -47,6 +47,13 @@ This repo is a pytorch implementation of various deep RL algorithms, trained and
             <td> :heavy_check_mark: </td>
             <td> :x: </td>
         </tr>       
+        <tr>
+            <td> Option-Critic </td>
+            <td> :heavy_check_mark: </td>
+            <td> :heavy_check_mark: </td>
+            <td> :heavy_check_mark: </td>
+            <td> :x: </td>
+        </tr>   
     </tbody>
 </table>
 
