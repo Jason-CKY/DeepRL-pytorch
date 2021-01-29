@@ -11,19 +11,22 @@ import numpy as np
 import imageio
 from torch.nn import functional as F
 from Algorithms.body import VAE, ConvBody, FCBody, DummyBody
-from Algorithms.option_critic.buffer import Storage
-from Algorithms.utils import to_tensor, to_np, sanitise_state_dict,LinearSchedule
+from Algorithms.dac_ppo.buffer import Storage
+from Algorithms.utils import to_tensor, to_np, sanitise_state_dict, random_sample,LinearSchedule
 from torch.optim import Adam, RMSprop
-from Algorithms.option_critic.core import OptionGaussianActorCriticNet
+from Algorithms.dac_ppo.core import OptionGaussianActorCriticNet
 from torch.utils.tensorboard import SummaryWriter
 from Logger.logger import Logger
 from tqdm import tqdm
-from copy import deepcopy
-class Option_Critic:
-    def __init__(self, env_fn, save_dir, tensorboard_logdir = None, optimizer_class = RMSprop, weight_decay=0,
-                oc_kwargs=dict(), logger_kwargs=dict(), eps_start=1.0, eps_end=0.1, eps_decay=1e4, lr=1e-3, 
-                gamma=0.99, rollout_length=2048, beta_reg=0.01, entropy_weight=0.01, gradient_clip=5,
-                target_network_update_freq=200, max_ep_len=2000, save_freq=200, seed=0, **kwargs):
+
+class DAC_PPO:
+    '''
+    DAC + PPO
+    '''
+    def __init__(self, env_fn, save_dir, tensorboard_logdir = None, optimizer_class = Adam, weight_decay=0,
+                oc_kwargs=dict(), logger_kwargs=dict(), lr=1e-3, optimization_epochs=5, mini_batch_size=64, ppo_ratio_clip=0.2,
+                gamma=0.99, rollout_length=2048, beta_weight=0, entropy_weight=0.01, gradient_clip=5, gae_tau=0.95,
+                max_ep_len=2000, save_freq=200, seed=0, **kwargs):
         
         self.seed = seed
         torch.manual_seed(seed)
@@ -35,24 +38,15 @@ class Option_Critic:
         self.oc_kwargs = oc_kwargs
         self.network_fn = self.get_network_fn(self.oc_kwargs)
         self.network = self.network_fn().to(self.device)
-        self.target_network = deepcopy(self.network)
-        # Freeze target networks with respect to optimizers
-        for p in self.target_network.parameters():
-            p.requires_grad = False        
-        # self.target_network = self.network_fn().to(self.device)
-
         self.optimizer_class = optimizer_class
-        self.optimizer = optimizer_class(self.network.parameters(), self.lr, weight_decay=weight_decay)
-        # self.target_network.load_state_dict(self.network.state_dict())
-        self.eps_start = eps_start; self.eps_end = eps_end; self.eps_decay = eps_decay
-        self.eps_schedule = LinearSchedule(eps_start, eps_end, eps_decay)
+        self.weight_decay = weight_decay
+        self.optimizer = optimizer_class(self.network.parameters(), self.lr, weight_decay=self.weight_decay)
         self.gamma = gamma
         self.rollout_length = rollout_length
         self.num_options = oc_kwargs['num_options']
-        self.beta_reg = beta_reg
+        self.beta_weight = beta_weight
         self.entropy_weight = entropy_weight
         self.gradient_clip = gradient_clip
-        self.target_network_update_freq = target_network_update_freq
         self.max_ep_len = max_ep_len
         self.save_freq = save_freq
 
@@ -61,10 +55,16 @@ class Option_Critic:
         self.tensorboard_logdir = tensorboard_logdir
         # self.tensorboard_logger = SummaryWriter(log_dir=tensorboard_logdir)
 
-        self.is_initial_states = to_tensor(np.ones((1))).byte()
-        self.prev_options = self.is_initial_states.clone().long().to(self.device)
+        self.is_initial_states = to_tensor(np.ones((1))).byte().to(self.device)
+        self.prev_options = to_tensor(np.zeros((1))).long().to(self.device)
 
         self.best_mean_reward = -np.inf
+
+        self.optimization_epochs = optimization_epochs
+        self.mini_batch_size = mini_batch_size
+        self.ppo_ratio_clip = ppo_ratio_clip
+        self.gae_tau = gae_tau
+        self.use_gae = self.gae_tau > 0
 
     def get_network_fn(self, oc_kwargs):
         activation=nn.ReLU
@@ -93,51 +93,7 @@ class Option_Critic:
         )
 
         return network_fn
-        
-    def update(self, storage, states, timestep):
-        with torch.no_grad():
-            prediction = self.target_network(states)
-            storage.placeholder() # create the beta_adv attribute inside storage to be [None]*rollout_length
-            betas = prediction['beta'].squeeze()[self.prev_options]
-
-            # intro-policy update
-            ret = (1 - betas) * prediction['q_o'][0, self.prev_options] + \
-                  betas * torch.max(prediction['q_o'], dim=-1)[0]
-            ret = ret.unsqueeze(-1)
-
-        for i in reversed(range(self.rollout_length)):
-            # calculate option value and advantage value
-            ret = storage.r[i] + self.gamma * storage.m[i] * ret
-            adv = ret - storage.q_o[i].gather(1, storage.o[i])
-            storage.ret[i] = ret
-            storage.adv[i] = adv
-
-            # state value function at the current state is calculated as the maximum state-option value * (1-eps) + mean of state-option vale * (eps)
-            # if eps=0 (always greedy option), then state value is just the maximum state-option value, as agent will always pick the option that gives maximum value
-            v = storage.q_o[i].max(dim=-1, keepdim=True)[0] * (1 - storage.eps[i]) + storage.q_o[i].mean(-1).unsqueeze(-1) * storage.eps[i]
-            q = storage.q_o[i].gather(1, storage.prev_o[i])
-            storage.beta_adv[i] = q - v + self.beta_reg
-        
-        q, beta, log_pi, ret, adv, beta_adv, ent, option, action, initial_states, prev_o = \
-            storage.cat(['q_o', 'beta', 'log_pi', 'ret', 'adv', 'beta_adv', 'ent', 'o', 'a', 'init', 'prev_o'])
-
-        # calculate loss function
-        q_loss = (q.gather(1, option) - ret.detach()).pow(2).mul(0.5).mean()
-        pi_loss = -(log_pi * adv.detach()) - self.entropy_weight * ent
-        pi_loss = pi_loss.mean()
-        beta_loss = (beta.gather(1, prev_o) * beta_adv.detach() * (1 - initial_states)).mean()
-        # logging all losses
-        self.logger.store(q_loss=q_loss.item(), pi_loss=pi_loss.item(), beta_loss=beta_loss.item())
-        self.tensorboard_logger.add_scalar("loss/q_loss", q_loss.item(), timestep)
-        self.tensorboard_logger.add_scalar("loss/pi_loss", pi_loss.item(), timestep)
-        self.tensorboard_logger.add_scalar("loss/beta_loss", beta_loss.item(), timestep)
-
-        # backward and train
-        self.optimizer.zero_grad()
-        (pi_loss + q_loss + beta_loss).backward()
-        nn.utils.clip_grad_norm_(self.network.parameters(), self.gradient_clip)
-        self.optimizer.step()
-
+ 
     def save_weights(self, best=False, fname=None):
         '''
         save the pytorch model weights of ac and ac_targ
@@ -155,8 +111,7 @@ class Option_Critic:
         
         print('saving checkpoint...')
         checkpoint = {
-            'oc': self.network.state_dict(),
-            'oc_target': self.target_network.state_dict()
+            'oc': self.network.state_dict()
         }
         torch.save(checkpoint, os.path.join(self.save_dir, _fname))
         self.env.save(os.path.join(self.save_dir, "env.json"))
@@ -179,7 +134,6 @@ class Option_Critic:
         if os.path.isfile(checkpoint_path):
             checkpoint = torch.load(checkpoint_path, map_location=self.device)
             self.network.load_state_dict(sanitise_state_dict(checkpoint['oc']))
-            self.target_network.load_state_dict(sanitise_state_dict(checkpoint['oc_target']))
 
             env_path = os.path.join(self.save_dir, "env.json")
             if os.path.isfile(env_path):
@@ -188,7 +142,7 @@ class Option_Critic:
             
             print('checkpoint loaded at {}'.format(checkpoint_path))
         else:
-            raise OSError(f"{checkpoint_path}: Checkpoint file not found.")    
+            raise OSError("Checkpoint file not found.")    
 
     def reinit_network(self):
         self.seed += 1
@@ -196,39 +150,7 @@ class Option_Critic:
         np.random.seed(self.seed)
         self.best_mean_reward = -np.inf
         self.network = self.network_fn().to(self.device)
-        # self.target_network = self.network_fn().to(self.device)
-        self.optimizer = self.optimizer_class(self.network.parameters(), self.lr, weight_decay=weight_decay)
-        self.target_network = deepcopy(self.network)
-        # Freeze target networks with respect to optimizers
-        for p in self.target_network.parameters():
-            p.requires_grad = False        
-        # self.target_network.load_state_dict(self.network.state_dict())
-        self.eps_schedule = LinearSchedule(self.eps_start, self.eps_end, self.eps_decay)
-
-    def sample_option(self, prediction, epsilon, prev_option, is_intial_states):
-        with torch.no_grad():
-            # get q value
-            q_option = prediction['q_o']
-            pi_option = torch.zeros_like(q_option).add(epsilon / q_option.size(1))
-
-            # greedy policy
-            greedy_option = q_option.argmax(dim=-1, keepdim=True)
-            prob = 1 - epsilon + epsilon / q_option.size(1)
-            prob = torch.zeros_like(pi_option).add(prob)
-            pi_option.scatter_(1, greedy_option, prob)
-
-            mask = torch.zeros_like(q_option)
-            mask[:, prev_option] = 1
-            beta = prediction['beta']
-            pi_hat_option = (1 - beta) * mask + beta * pi_option
-
-            dist = torch.distributions.Categorical(probs=pi_option)
-            options = dist.sample()
-            dist = torch.distributions.Categorical(probs=pi_hat_option)
-            options_hat = dist.sample()
-
-            options = torch.where(is_intial_states.to(self.device), options, options_hat)
-        return options
+        self.optimizer = self.optimizer_class(self.network.parameters(), self.lr, weight_decay=self.weight_decay)
 
     def record_online_return(self, ep_ret, timestep, ep_len):
         self.tensorboard_logger.add_scalar('episodic_return_train', ep_ret, timestep)
@@ -236,14 +158,133 @@ class Option_Critic:
         self.logger.dump()
         # print(f"episode return: {ep_ret}")
 
+    def compute_pi_hat(self, prediction, prev_option, is_initial_states):
+        inter_pi = prediction['inter_pi']
+        mask = torch.zeros_like(inter_pi)
+        mask[:, prev_option] = 1
+        beta = prediction['beta']
+        pi_hat = (1 - beta) * mask + beta * inter_pi
+        is_initial_states = is_initial_states.view(-1, 1).expand(-1, inter_pi.size(1))
+        pi_hat = torch.where(is_initial_states, inter_pi, pi_hat)
+        return pi_hat
+
+    def compute_pi_bar(self, options, action, mean, std):
+        options = options.unsqueeze(-1).expand(-1, -1, mean.size(-1))
+        mean = mean.gather(1, options).squeeze(1)
+        std = std.gather(1, options).squeeze(1)
+        dist = torch.distributions.Normal(mean, std)
+        pi_bar = dist.log_prob(action).sum(-1).exp().unsqueeze(-1)
+        return pi_bar
+
+    def compute_log_pi_a(self, options, pi_hat, action, mean, std, mdp):
+        if mdp == 'hat':
+            return pi_hat.add(1e-5).log().gather(1, options)
+        elif mdp == 'bar':
+            pi_bar = self.compute_pi_bar(options, action, mean, std)
+            return pi_bar.add(1e-5).log()
+        else:
+            raise NotImplementedError
+
+    def compute_adv(self, storage, mdp):
+        v = storage.__getattribute__('v_%s' % (mdp))
+        adv = storage.__getattribute__('adv_%s' % (mdp))
+        all_ret = storage.__getattribute__('ret_%s' % (mdp))
+
+        ret = v[-1].detach()
+        advantages = to_tensor(np.zeros((1))).to(self.device)
+        for i in reversed(range(self.rollout_length)):
+            ret = storage.r[i] + self.gamma * storage.m[i] * ret
+            if not self.use_gae:
+                advantages = ret - v[i].detach()
+            else:
+                td_error = storage.r[i] + self.gamma * storage.m[i] * v[i + 1] - v[i]
+                advantages = advantages * self.gae_tau * self.gamma * storage.m[i] + td_error
+            adv[i] = advantages.detach()
+            all_ret[i] = ret.detach()
+
+    def update(self, storage, mdp, timestep, freeze_v=False):
+        states, actions, options, log_probs_old, returns, advantages, prev_options, inits, pi_hat, mean, std = \
+            storage.cat(
+                ['s', 'a', 'o', 'log_pi_%s' % (mdp), 'ret_%s' % (mdp), 'adv_%s' % (mdp), 'prev_o', 'init', 'pi_hat',
+                 'mean', 'std'])
+        actions = actions.detach()
+        log_probs_old = log_probs_old.detach()
+        pi_hat = pi_hat.detach()
+        mean = mean.detach()
+        std = std.detach()
+        advantages = (advantages - advantages.mean()) / advantages.std()
+
+        for _ in range(self.optimization_epochs):
+            sampler = random_sample(np.arange(states.size(0)), self.mini_batch_size)
+            for batch_indices in sampler:
+                batch_indices = to_tensor(batch_indices).long()
+
+                sampled_pi_hat = pi_hat[batch_indices]
+                sampled_mean = mean[batch_indices]
+                sampled_std = std[batch_indices]
+                sampled_states = states[batch_indices]
+                sampled_prev_o = prev_options[batch_indices]
+                sampled_init = inits[batch_indices]
+
+                sampled_options = options[batch_indices]
+                sampled_actions = actions[batch_indices]
+                sampled_log_probs_old = log_probs_old[batch_indices]
+                sampled_returns = returns[batch_indices]
+                sampled_advantages = advantages[batch_indices]
+
+                prediction = self.network(sampled_states, unsqueeze=False)
+                if mdp == 'hat':
+                    cur_pi_hat = self.compute_pi_hat(prediction, sampled_prev_o.view(-1), sampled_init.view(-1))
+                    entropy = -(cur_pi_hat * cur_pi_hat.add(1e-5).log()).sum(-1).mean()
+                    log_pi_a = self.compute_log_pi_a(
+                        sampled_options, cur_pi_hat, sampled_actions, sampled_mean, sampled_std, mdp)
+                    beta_loss = prediction['beta'].mean()
+                elif mdp == 'bar':
+                    log_pi_a = self.compute_log_pi_a(
+                        sampled_options, sampled_pi_hat, sampled_actions, prediction['mean'], prediction['std'], mdp)
+                    entropy = 0
+                    beta_loss = 0
+                else:
+                    raise NotImplementedError
+
+                if mdp == 'bar':
+                    v = prediction['q_o'].gather(1, sampled_options)
+                elif mdp == 'hat':
+                    v = (prediction['q_o'] * sampled_pi_hat).sum(-1).unsqueeze(-1)
+                else:
+                    raise NotImplementedError
+
+                ratio = (log_pi_a - sampled_log_probs_old).exp()
+                obj = ratio * sampled_advantages
+                obj_clipped = ratio.clamp(1.0 - self.ppo_ratio_clip,
+                                          1.0 + self.ppo_ratio_clip) * sampled_advantages
+                policy_loss = -torch.min(obj, obj_clipped).mean() - self.entropy_weight * entropy + \
+                              self.beta_weight * beta_loss
+
+                # discarded = (obj > obj_clipped).float().mean()
+                value_loss = 0.5 * (sampled_returns - v).pow(2).mean()
+
+                self.tensorboard_logger.add_scalar(f"loss/{mdp}_value_loss", value_loss.item(), timestep)
+                self.tensorboard_logger.add_scalar(f"loss/{mdp}_policy_loss", policy_loss.item(), timestep)
+                self.tensorboard_logger.add_scalar(f"loss/{mdp}_beta_loss", beta_loss if isinstance(beta_loss, int) else beta_loss.item(), timestep)
+                
+                if freeze_v:
+                    value_loss = 0
+
+                self.optimizer.zero_grad()
+                (policy_loss + value_loss).backward()
+                nn.utils.clip_grad_norm_(self.network.parameters(), self.gradient_clip)
+                self.optimizer.step()
+
     def learn_one_trial(self, num_timesteps, trial_num=1):
         self.states, ep_ret, ep_len = self.env.reset(), 0, 0
-        storage = Storage(self.rollout_length, ['beta', 'o', 'beta_adv', 'prev_o', 'init', 'eps'])
+        storage = Storage(self.rollout_length, ['adv_bar', 'adv_hat', 'ret_bar', 'ret_hat'])
+        states = self.states
         for timestep in tqdm(range(1, num_timesteps+1)):
-            prediction = self.network(self.states)
-            epsilon = self.eps_schedule()
-            # select option
-            options = self.sample_option(prediction, epsilon, self.prev_options, self.is_initial_states)
+            prediction = self.network(states)
+            pi_hat = self.compute_pi_hat(prediction, self.prev_options, self.is_initial_states)
+            dist = torch.distributions.Categorical(probs=pi_hat)
+            options = dist.sample()
 
             # Gaussian policy
             mean = prediction['mean'][0, options]
@@ -252,9 +293,12 @@ class Option_Critic:
 
             # select action
             actions = dist.sample()
-            # entropy
-            log_pi = dist.log_prob(actions).sum(-1).unsqueeze(-1)
-            entropy = dist.entropy().sum(-1).unsqueeze(-1)
+
+            pi_bar = self.compute_pi_bar(options.unsqueeze(-1), actions,
+                                         prediction['mean'], prediction['std'])
+
+            v_bar = prediction['q_o'].gather(1, options.unsqueeze(-1))
+            v_hat = (prediction['q_o'] * pi_hat).sum(-1).unsqueeze(-1)
 
             next_states, rewards, terminals, _ = self.env.step(to_np(actions[0]))
             ep_ret += rewards
@@ -284,25 +328,46 @@ class Option_Critic:
 
             storage.add(prediction)
             storage.add({'r': to_tensor(rewards).to(self.device).unsqueeze(-1),
-                        'm': to_tensor(1 - terminals).to(self.device).unsqueeze(-1),
-                        'o': options.unsqueeze(-1),
-                        'prev_o': self.prev_options.unsqueeze(-1),
-                        'ent': entropy,
-                        'a': actions.unsqueeze(-1),
-                        'init': self.is_initial_states.unsqueeze(-1).to(self.device).float(),
-                        'log_pi': log_pi,
-                        'eps': epsilon})
+                         'm': to_tensor(1 - terminals).to(self.device).unsqueeze(-1),
+                         'a': actions,
+                         'o': options.unsqueeze(-1),
+                         'prev_o': self.prev_options.unsqueeze(-1),
+                         's': to_tensor(states).unsqueeze(0),
+                         'init': self.is_initial_states.unsqueeze(-1),
+                         'pi_hat': pi_hat,
+                         'log_pi_hat': pi_hat[0, options].add(1e-5).log().unsqueeze(-1),
+                         'log_pi_bar': pi_bar.add(1e-5).log(),
+                         'v_bar': v_bar,
+                         'v_hat': v_hat})
 
-            self.is_initial_states = to_tensor(terminals).unsqueeze(-1).byte()
+            self.is_initial_states = to_tensor(terminals).unsqueeze(-1).to(self.device).byte()
             self.prev_options = options
-            self.states = next_states
-
-            if timestep % self.target_network_update_freq == 0:
-                self.target_network.load_state_dict(self.network.state_dict())
+            states = next_states
            
             if timestep%self.rollout_length==0:
-                self.update(storage, self.states, timestep)
-                storage = Storage(self.rollout_length, ['beta', 'o', 'beta_adv', 'prev_o', 'init', 'eps'])
+                self.states = states
+                prediction = self.network(states)
+                pi_hat = self.compute_pi_hat(prediction, self.prev_options, self.is_initial_states)
+                dist = torch.distributions.Categorical(pi_hat)
+                options = dist.sample()
+                v_bar = prediction['q_o'].gather(1, options.unsqueeze(-1))
+                v_hat = (prediction['q_o'] * pi_hat).sum(-1).unsqueeze(-1)
+
+                storage.add(prediction)
+                storage.add({
+                    'v_bar': v_bar,
+                    'v_hat': v_hat,
+                })
+                storage.placeholder()
+
+                self.compute_adv(storage, 'bar')
+                self.compute_adv(storage, 'hat')
+                mdps = ['hat', 'bar']
+                np.random.shuffle(mdps)
+                self.update(storage, mdps[0], timestep)
+                self.update(storage, mdps[1], timestep)
+                
+                storage = Storage(self.rollout_length, ['adv_bar', 'adv_hat', 'ret_bar', 'ret_hat'])
             
             if self.save_freq > 0 and timestep % self.save_freq == 0:
                 self.save_weights(fname=f"latest_{trial_num}.pth")
@@ -315,7 +380,6 @@ class Option_Critic:
         '''
         self.env.training=True
         self.network.train()
-        self.target_network.train()
         best_reward_trial = -np.inf
         for trial in range(num_trials):
             self.tensorboard_logger = SummaryWriter(log_dir=os.path.join(self.tensorboard_logdir, f'{trial+1}'))
@@ -342,31 +406,32 @@ class Option_Critic:
             Ep_Len (int): Total length of the episode in terms of timesteps
         '''
         self.env.training=False
-        self.network.eval(); self.target_network.eval()
+        self.network.eval()
         if render:
             self.env.render('human')
         states, done, ep_ret, ep_len = self.env.reset(), False, 0, 0
         is_initial_states = to_tensor(np.ones((1))).byte().to(self.device)
         prev_options = is_initial_states.clone().long().to(self.device)
-        epsilon = 0.0
         img = []
         if record:
             img.append(self.env.render('rgb_array'))
 
         if timesteps is not None:
-            for i in tqdm(range(timesteps)):
+            for i in range(timesteps):
                 # select option
                 prediction = self.network(states)
-                options = self.sample_option(prediction, epsilon, prev_options, is_initial_states)
+                pi_hat = self.compute_pi_hat(prediction, prev_options, is_initial_states)
+                dist = torch.distributions.Categorical(probs=pi_hat)
+                options = dist.sample()
 
                 # Gaussian policy
                 mean = prediction['mean'][0, options]
                 std = prediction['std'][0, options]
-                dist = torch.distributions.Normal(mean, std)
+                # dist = torch.distributions.Normal(mean, std)
 
                 # select action
                 actions = mean
-
+                
                 next_states, rewards, terminals, _ = self.env.step(to_np(actions[0]))
                 is_initial_states = to_tensor(terminals).unsqueeze(-1).byte()
                 prev_options = options
@@ -377,19 +442,19 @@ class Option_Critic:
                     self.env.render()
                 ep_ret += rewards
                 ep_len += 1                
-
-                if terminals:
-                    break
         else:
             while not (done or (ep_len==self.max_ep_len)):
                 # select option
                 prediction = self.network(states)
-                options = self.sample_option(prediction, epsilon, prev_options, is_initial_states)
+                pi_hat = self.compute_pi_hat(prediction, prev_options, is_initial_states)
+                dist = torch.distributions.Categorical(probs=pi_hat)
+                options = dist.sample()
 
                 # Gaussian policy
                 mean = prediction['mean'][0, options]
                 std = prediction['std'][0, options]
-                dist = torch.distributions.Normal(mean, std)
+                # dist = torch.distributions.Normal(mean, std)
+
                 # select action
                 actions = mean
 

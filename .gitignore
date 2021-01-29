@@ -15,3 +15,4 @@ VAE/output
 VAE/dataset/*
 !VAE/dataset/Dataset.py
 !VAE/dataset/__init__.py
+tf_logs

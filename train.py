@@ -13,7 +13,7 @@ def parse_arguments():
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--env', type=str, default='CartPoleContinuousBulletEnv-v0', help='environment_id')
-    parser.add_argument('--agent', type=str, default='ppo', choices=['ddpg', 'trpo', 'ppo', 'td3', 'option_critic', 'random'], help='specify type of agent')
+    parser.add_argument('--agent', type=str, default='ppo', choices=['ddpg', 'trpo', 'ppo', 'td3', 'option_critic', 'dac_ppo', 'random'], help='specify type of agent')
     parser.add_argument('--timesteps', type=int, required=True, help='specify number of timesteps to train for') 
     parser.add_argument('--seed', type=int, default=0, help='seed number for reproducibility')
     parser.add_argument('--ngpu', type=int, default=1, help='Number of gpus to use for training (default 1)')
@@ -79,18 +79,29 @@ def main():
             f.write(json.dumps(model_kwargs, indent=4))   
 
     elif args.agent.lower() == 'option_critic':
-        env = env_fn()
-        from gym.spaces import Box
-        if isinstance(env.action_space, Box):
-            from Algorithms.option_critic.oc_continuous import Option_Critic
+        if not args.rlbench:
+            env = env_fn()
+            from gym.spaces import Box
+            if isinstance(env.action_space, Box):
+                from Algorithms.option_critic.oc_continuous import Option_Critic
+            else:
+                from Algorithms.option_critic.oc_discrete import Option_Critic
+            del env
         else:
-            from Algorithms.option_critic.oc_discrete import Option_Critic
-        del env
+            from Algorithms.option_critic.oc_continuous import Option_Critic
         model_kwargs['tensorboard_logdir'] = os.path.join("tf_logs", args.env, args.agent)
         model = Option_Critic(env_fn, save_dir, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
         with open(os.path.join(save_dir, "option_critic_config.json"), "w") as f:
             f.write(json.dumps(model_kwargs, indent=4))   
 
+    elif args.agent.lower() == 'dac_ppo':
+        from Algorithms.dac_ppo.dac_ppo import DAC_PPO
+        model_kwargs['tensorboard_logdir'] = os.path.join("tf_logs", args.env, args.agent)
+        model = DAC_PPO(env_fn, save_dir, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
+        with open(os.path.join(save_dir, "option_critic_config.json"), "w") as f:
+            f.write(json.dumps(model_kwargs, indent=4))   
+
+    print(model.network)
     model.learn(args.timesteps, args.num_trials) 
 
 if __name__=='__main__':

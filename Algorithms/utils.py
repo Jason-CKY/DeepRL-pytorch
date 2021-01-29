@@ -100,6 +100,15 @@ def to_tensor(obs):
 def to_np(t):
     return t.cpu().detach().numpy()
 
+def random_sample(indices, batch_size):
+    indices = np.asarray(np.random.permutation(indices))
+    batches = indices[:len(indices) // batch_size * batch_size].reshape(-1, batch_size)
+    for batch in batches:
+        yield batch
+    r = len(indices) % batch_size
+    if r:
+        yield indices[-r:]
+
 class ConstantSchedule:
     def __init__(self, val):
         self.val = val

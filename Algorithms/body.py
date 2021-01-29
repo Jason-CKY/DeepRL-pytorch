@@ -45,7 +45,6 @@ def cnn(in_channels, conv_layer_sizes, activation, batchnorm=True):
     nn.Sequential module for the CNN
   '''
   layers = []
-  channels = in_channels
   for i in range(len(conv_layer_sizes)):
     out_channel, kernel, stride = conv_layer_sizes[i]
     layers += [nn.Conv2d(in_channels, out_channel, kernel, stride),
@@ -56,27 +55,6 @@ def cnn(in_channels, conv_layer_sizes, activation, batchnorm=True):
     in_channels = out_channel
 
   return nn.Sequential(*layers)
-
-class ConvBody(nn.Module):
-    def __init__(self, obs_dim, conv_layer_sizes, activation, batchnorm=True):
-        super(ConvBody, self).__init__()
-        self.net = cnn(obs_dim[0], conv_layer_sizes , activation, batchnorm=batchnorm)
-        self.latent_dim = self.calc_shape(obs_dim, self.net)
-
-    def calc_shape(self, obs_dim, cnn):
-      '''
-      Function to determine the shape of the data after the conv layers
-      to determine how many neurons for the MLP.
-      '''
-      C, H, W = obs_dim
-      dummy_input = torch.randn(1, C, H, W)
-      with torch.no_grad():
-        cnn_out = cnn(dummy_input)
-      shape = cnn_out.view(-1, ).shape[0]
-      return shape
-
-    def forward(self, x):
-        return self.net(x).view(1, -1)        
 
 class VAE(nn.Module):
     def __init__(self, enc_out_dim=512, latent_dim=256, load_path=None, device='cpu'):
@@ -178,3 +156,26 @@ class FCBody(nn.Module):
         for layer in self.layers:
             x = self.gate(layer(x))
         return x        
+
+class ConvBody(nn.Module):
+    def __init__(self, obs_dim, conv_layer_sizes, activation, batchnorm=True):
+        super(ConvBody, self).__init__()
+        self.net = cnn(obs_dim[0], conv_layer_sizes , activation, batchnorm=batchnorm)
+        self.latent_dim = self.calc_shape(obs_dim, self.net)
+
+    def calc_shape(self, obs_dim, cnn):
+      '''
+      Function to determine the shape of the data after the conv layers
+      to determine how many neurons for the MLP.
+      '''
+      C, H, W = obs_dim
+      dummy_input = torch.randn(1, C, H, W)
+      with torch.no_grad():
+        cnn_out = cnn(dummy_input)
+      shape = cnn_out.view(-1, ).shape[0]
+      return shape
+
+    def forward(self, x):
+        y = self.net(x)
+        y = y.view(y.size(0), -1)
+        return y
