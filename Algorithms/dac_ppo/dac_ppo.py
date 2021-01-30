@@ -411,14 +411,13 @@ class DAC_PPO:
             self.env.render('human')
         states, done, ep_ret, ep_len = self.env.reset(), False, 0, 0
         is_initial_states = to_tensor(np.ones((1))).byte().to(self.device)
-        prev_options = is_initial_states.clone().long().to(self.device)
+        prev_options = to_tensor(np.zeros((1))).long().to(self.device)
         img = []
         if record:
             img.append(self.env.render('rgb_array'))
 
         if timesteps is not None:
             for i in range(timesteps):
-                # select option
                 prediction = self.network(states)
                 pi_hat = self.compute_pi_hat(prediction, prev_options, is_initial_states)
                 dist = torch.distributions.Categorical(probs=pi_hat)
@@ -427,13 +426,13 @@ class DAC_PPO:
                 # Gaussian policy
                 mean = prediction['mean'][0, options]
                 std = prediction['std'][0, options]
-                # dist = torch.distributions.Normal(mean, std)
+                dist = torch.distributions.Normal(mean, std)
 
                 # select action
                 actions = mean
                 
                 next_states, rewards, terminals, _ = self.env.step(to_np(actions[0]))
-                is_initial_states = to_tensor(terminals).unsqueeze(-1).byte()
+                is_initial_states = to_tensor(terminals).unsqueeze(-1).byte().to(self.device)
                 prev_options = options
                 states = next_states
                 if record:
@@ -459,7 +458,7 @@ class DAC_PPO:
                 actions = mean
 
                 next_states, rewards, terminals, _ = self.env.step(to_np(actions[0]))
-                is_initial_states = to_tensor(terminals).unsqueeze(-1).byte()
+                is_initial_states = to_tensor(terminals).unsqueeze(-1).byte().to(self.device)
                 prev_options = options
                 states = next_states
                 if record:

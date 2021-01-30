@@ -58,7 +58,7 @@ def random_test(env_fn, render=True, record_dir=None, timesteps=None):
 def parse_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument('--env', type=str, default='AntBulletEnv-v0', help='environment_id')
-    parser.add_argument('--agent', type=str, default='ppo', choices=['ddpg', 'trpo', 'ppo', 'td3', 'option_critic', 'random'], help='specify type of agent')
+    parser.add_argument('--agent', type=str, default='ppo', choices=['ddpg', 'trpo', 'ppo', 'td3', 'option_critic', 'dac_ppo', 'random'], help='specify type of agent')
     parser.add_argument('--render', action='store_true', help='if true, display human renders of the environment')
     parser.add_argument('--gif', action='store_true', help='if true, make gif of the trained agent')
     parser.add_argument('--timesteps', type=int, help='specify number of timesteps to train for')
@@ -138,6 +138,11 @@ def main():
         else:
             from Algorithms.option_critic.oc_continuous import Option_Critic
         model = Option_Critic(env_fn, save_dir, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
+        model.load_weights()
+
+    elif args.agent.lower() == 'dac_ppo':
+        from Algorithms.dac_ppo.dac_ppo import DAC_PPO
+        model = DAC_PPO(env_fn, save_dir, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
         model.load_weights()
 
     ep_ret, ep_len = model.test(render=args.render, record=args.gif, timesteps=args.timesteps)

@@ -98,7 +98,7 @@ def main():
         from Algorithms.dac_ppo.dac_ppo import DAC_PPO
         model_kwargs['tensorboard_logdir'] = os.path.join("tf_logs", args.env, args.agent)
         model = DAC_PPO(env_fn, save_dir, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
-        with open(os.path.join(save_dir, "option_critic_config.json"), "w") as f:
+        with open(os.path.join(save_dir, "dac_ppo_config.json"), "w") as f:
             f.write(json.dumps(model_kwargs, indent=4))   
 
     print(model.network)
