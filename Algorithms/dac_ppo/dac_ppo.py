@@ -409,7 +409,7 @@ class DAC_PPO:
         self.network.eval()
         if render:
             self.env.render('human')
-        states, done, ep_ret, ep_len = self.env.reset(), False, 0, 0
+        states, terminals, ep_ret, ep_len = self.env.reset(), False, 0, 0
         is_initial_states = to_tensor(np.ones((1))).byte().to(self.device)
         prev_options = to_tensor(np.zeros((1))).long().to(self.device)
         img = []
@@ -442,7 +442,7 @@ class DAC_PPO:
                 ep_ret += rewards
                 ep_len += 1                
         else:
-            while not (done or (ep_len==self.max_ep_len)):
+            while not (terminals or (ep_len==self.max_ep_len)):
                 # select option
                 prediction = self.network(states)
                 pi_hat = self.compute_pi_hat(prediction, prev_options, is_initial_states)

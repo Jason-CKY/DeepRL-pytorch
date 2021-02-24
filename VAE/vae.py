@@ -13,6 +13,7 @@ class VAE(nn.Module):
         self.beta = beta
         self.latent_dim = latent_dim
         self.device = device
+        self.input_height = input_height
         # encoder, decoder
         self.encoder = resnet18_encoder(False, False)
         self.decoder = nn.Sequential(
@@ -30,6 +31,8 @@ class VAE(nn.Module):
 
         # for the gaussian likelihood
         self.log_scale = nn.Parameter(torch.Tensor([0.0]))
+
+        self.p = 0.2
 
     def reparameterise(self, mu, logvar):
         if self.training:
@@ -55,7 +58,7 @@ class VAE(nn.Module):
 
         return z
 
-    def get_elbo_loss(self, x):
+    def get_elbo_loss(self, x, p):
         # encode x to get the mu and variance parameters
         x_encoded = self.encoder(x)
         mu, log_var = self.fc_mu(x_encoded), self.fc_var(x_encoded)
@@ -63,8 +66,11 @@ class VAE(nn.Module):
         # sample z from mu and log_var
         z = self.reparameterise(mu, log_var)
         x_hat = self.decoder(z)
+        
+        boot_recon = int(p * self.input_height * self.input_height * 3)
+        recon_loss = F.mse_loss(x_hat, x, reduction='none').view(-1).topk(boot_recon, sorted=False)[0].sum()
 
-        recon_loss = F.mse_loss(x_hat, x, reduction='sum')
+        # recon_loss = F.mse_loss(x_hat, x, reduction='sum')
         kld = 0.5*torch.sum(log_var.exp() - log_var - 1 + mu.pow(2))
         elbo = recon_loss + self.beta * kld
 

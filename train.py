@@ -20,8 +20,8 @@ def parse_arguments():
     parser.add_argument('--num_trials', type=int, default=1, help='Number of times to train the algo')
     parser.add_argument('--normalize', action='store_true', help='if true, normalize environment observations')
     parser.add_argument('--rlbench', action='store_true', help='if true, use rlbench environment wrappers')
-    parser.add_argument('--image', action='store_true', help='if true, use rlbench environment wrappers')
-    parser.add_argument('--view', type=str, default='wrist_rgb', 
+    parser.add_argument('--image', action='store_true', help='if true, use image environment wrappers')
+    parser.add_argument('--view', type=str, default='front_rgb', 
                         choices=['wrist_rgb', 'front_rgb', 'left_shoulder_rgb', 'right_shoulder_rgb'], 
                         help='choose the type of camera view to generate image (only for RLBench envs)')
     return parser.parse_args()
@@ -89,7 +89,12 @@ def main():
             del env
         else:
             from Algorithms.option_critic.oc_continuous import Option_Critic
-        model_kwargs['tensorboard_logdir'] = os.path.join("tf_logs", args.env, args.agent)
+        save_dir = os.path.join(save_dir, model_kwargs['oc_kwargs']['model_type'])
+        os.makedirs(save_dir, exist_ok=True)
+        logger_kwargs = {
+            "output_dir": save_dir
+        }
+        model_kwargs['tensorboard_logdir'] = os.path.join("tf_logs", args.env, args.agent, model_kwargs['oc_kwargs']['model_type'])
         model = Option_Critic(env_fn, save_dir, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
         with open(os.path.join(save_dir, "option_critic_config.json"), "w") as f:
             f.write(json.dumps(model_kwargs, indent=4))   
@@ -101,7 +106,7 @@ def main():
         with open(os.path.join(save_dir, "dac_ppo_config.json"), "w") as f:
             f.write(json.dumps(model_kwargs, indent=4))   
 
-    print(model.network)
+    # print(model.network)
     model.learn(args.timesteps, args.num_trials) 
 
 if __name__=='__main__':

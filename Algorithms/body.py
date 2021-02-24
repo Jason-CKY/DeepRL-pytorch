@@ -9,6 +9,7 @@ import os
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
+from torchvision import transforms
 from Algorithms.utils import layer_init
 from pl_bolts.models.autoencoders.components import resnet18_encoder
 from collections import OrderedDict
@@ -83,6 +84,7 @@ class VAE(nn.Module):
 
     def forward(self, x):
         # encode x to get the mu and variance parameters
+        x = transforms.functional.normalize(x, mean=(0.5,0.5,0.5), std=(0.5,0.5,0.5)) # trained with normalization
         x_encoded = self.encoder(x)
         mu, log_var = self.fc_mu(x_encoded), self.fc_var(x_encoded)
 

@@ -1,4 +1,5 @@
 import os
+from glob import glob
 import numpy as np
 import matplotlib.pyplot as plt
 from Logger.logger import Logger
@@ -38,9 +39,9 @@ def standardise_lengths(x, max_length):
     
     return standardised_x
 
-def plot_results(env, agent, show_each_trial=False):
-    save_dir = os.path.join("Model_Weights", env, agent)
-    logger = Logger(output_dir=save_dir, load=True)
+def plot_results(logs_dir, plot_label, show_each_trial=False):
+    # save_dir = os.path.join("Model_Weights", env, agent)
+    logger = Logger(output_dir=logs_dir, load=True)
     EpLen_list, EpRet_list = logger.load_all_results(["EpLen", "EpRet"])
     Ep_Returns, Ep_Lengths = [], []
     max_length = len(EpLen_list[0])
@@ -49,7 +50,7 @@ def plot_results(env, agent, show_each_trial=False):
         EpLen = cumulative_sum(EpLen)
         EpRet = moving_average(EpRet, window=50)
         if show_each_trial:
-            plt.plot(x, y, label=f"trial: {idx+1}")
+            plt.plot(EpLen, EpRet, label=f"trial: {idx+1}")
         if len(EpLen) > max_length:
             max_length = len(EpLen)
             max_idx = idx
@@ -69,7 +70,7 @@ def plot_results(env, agent, show_each_trial=False):
     ret_std = np.array(moving_average(ret_std, 50))
     
     if not show_each_trial:
-        plt.plot(EpLen, ret_mean, label=f"{agent}")
+        plt.plot(EpLen, ret_mean, label=f"{plot_label}")
         plt.fill_between(EpLen, ret_mean-ret_std, ret_mean+ret_std, alpha=0.2)
 
 def parse_arguments():
@@ -87,14 +88,15 @@ def main():
     args = parse_arguments()
     title='Learning Curve'
     fig = plt.figure(title)
-    if args.agent is not None:
-        plot_results(args.env, args.agent)
     if args.compare:
-        agents = os.listdir(os.path.join("Model_Weights", args.env))
-        if args.agent is not None:
-            agents.remove(args.agent)
-        for agent in agents:
-            plot_results(args.env, agent)
+        path = os.path.join("Model_Weights", args.env)
+        plots = glob(os.path.join(path, "**/logs.pickle"), recursive=True)
+        plots = [os.path.split(plot)[0] for plot in plots]
+        for plot in plots:
+            plot_results(logs_dir=plot, plot_label=os.path.split(plot)[1])
+    elif args.agent is not None:
+        path = os.path.join("Model_Weights", args.env, args.agent)
+        plot_results(logs_dir=path, plot_label=args.agent)
 
     elif args.baseline:
         log_dir = os.path.join("Stable_Baselines", "logs", os.path.sep.join(args.log_dir.split(os.path.sep)[1:]))
@@ -115,7 +117,8 @@ def main():
         fname = "comparison.png" if args.compare else "learning_curve.png"
         save_dir = os.path.join("Model_Weights", args.env)
         plt.savefig(os.path.join(save_dir, fname))
-    plt.show()
+    else:
+        plt.show()
 
 if __name__ == '__main__':
     main()

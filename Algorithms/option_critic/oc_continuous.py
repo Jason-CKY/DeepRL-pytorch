@@ -42,7 +42,8 @@ class Option_Critic:
         # self.target_network = self.network_fn().to(self.device)
 
         self.optimizer_class = optimizer_class
-        self.optimizer = optimizer_class(self.network.parameters(), self.lr, weight_decay=weight_decay)
+        self.weight_decay = weight_decay
+        self.optimizer = optimizer_class(self.network.parameters(), self.lr, weight_decay=self.weight_decay)
         # self.target_network.load_state_dict(self.network.state_dict())
         self.eps_start = eps_start; self.eps_end = eps_end; self.eps_decay = eps_decay
         self.eps_schedule = LinearSchedule(eps_start, eps_end, eps_decay)
@@ -100,7 +101,7 @@ class Option_Critic:
             storage.placeholder() # create the beta_adv attribute inside storage to be [None]*rollout_length
             betas = prediction['beta'].squeeze()[self.prev_options]
 
-            # intro-policy update
+            # intra-policy update
             ret = (1 - betas) * prediction['q_o'][0, self.prev_options] + \
                   betas * torch.max(prediction['q_o'], dim=-1)[0]
             ret = ret.unsqueeze(-1)
@@ -197,7 +198,7 @@ class Option_Critic:
         self.best_mean_reward = -np.inf
         self.network = self.network_fn().to(self.device)
         # self.target_network = self.network_fn().to(self.device)
-        self.optimizer = self.optimizer_class(self.network.parameters(), self.lr, weight_decay=weight_decay)
+        self.optimizer = self.optimizer_class(self.network.parameters(), self.lr, weight_decay=self.weight_decay)
         self.target_network = deepcopy(self.network)
         # Freeze target networks with respect to optimizers
         for p in self.target_network.parameters():
@@ -234,6 +235,7 @@ class Option_Critic:
         self.tensorboard_logger.add_scalar('episodic_return_train', ep_ret, timestep)
         self.logger.store(EpRet=ep_ret, EpLen=ep_len)
         self.logger.dump()
+        self.tensorboard_logger.flush()
         # print(f"episode return: {ep_ret}")
 
     def learn_one_trial(self, num_timesteps, trial_num=1):
@@ -345,7 +347,7 @@ class Option_Critic:
         self.network.eval(); self.target_network.eval()
         if render:
             self.env.render('human')
-        states, done, ep_ret, ep_len = self.env.reset(), False, 0, 0
+        states, terminals, ep_ret, ep_len = self.env.reset(), False, 0, 0
         is_initial_states = to_tensor(np.ones((1))).byte().to(self.device)
         prev_options = is_initial_states.clone().long().to(self.device)
         epsilon = 0.0
@@ -381,7 +383,7 @@ class Option_Critic:
                 if terminals:
                     break
         else:
-            while not (done or (ep_len==self.max_ep_len)):
+            while not (terminals or (ep_len==self.max_ep_len)):
                 # select option
                 prediction = self.network(states)
                 options = self.sample_option(prediction, epsilon, prev_options, is_initial_states)

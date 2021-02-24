@@ -94,7 +94,7 @@ def main():
         random_test(env_fn, render=args.render, record_dir=save_dir, timesteps=args.timesteps)
         return
 
-    save_dir = os.path.join("Model_Weights", args.env, args.agent.lower())
+    save_dir = os.path.join("Model_Weights", args.env, args.agent.lower(), "vae")
     config_path = os.path.join(save_dir, args.agent.lower() + "_config.json")
     logger_kwargs = {
         "output_dir": save_dir
@@ -138,12 +138,12 @@ def main():
         else:
             from Algorithms.option_critic.oc_continuous import Option_Critic
         model = Option_Critic(env_fn, save_dir, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
-        model.load_weights()
+        model.load_weights(fname="latest_1.pth")
 
     elif args.agent.lower() == 'dac_ppo':
         from Algorithms.dac_ppo.dac_ppo import DAC_PPO
         model = DAC_PPO(env_fn, save_dir, seed=args.seed, logger_kwargs=logger_kwargs, **model_kwargs)
-        model.load_weights()
+        model.load_weights(fname="best.pth")
 
     ep_ret, ep_len = model.test(render=args.render, record=args.gif, timesteps=args.timesteps)
     print(f"Episode Return: {ep_ret}\nEpisode Length: {ep_len}")
