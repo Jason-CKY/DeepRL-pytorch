@@ -145,6 +145,25 @@ VAE network needs to be pretrained on the environment's images before being used
     </tbody>
 </table>
 
+## Results of Option-Critic on RLBench Environments
+The agents are trained on the front-rgb camera view to solve the RLBench Manipulation Tasks.
+<table>
+    <thead>
+        <tr>
+            <th>Environment</th>
+            <th> Learning Curve </th>
+            <th> Episode Recording </th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td> open-box </td>
+            <td> <img src = 'Model_Weights\open_box-vision-v0\front_rgb\comparison.png'> </td>
+            <td><img src = 'Model_Weights\open_box-vision-v0\front_rgb\oc_conv\recording.gif'> </td>
+        </tr>
+    </tbody>
+</table>
+
 ## How to use
 * Clone this repo
 * pip install -r requirements.txt
