@@ -1,0 +1,44 @@
+{
+    "ac_kwargs": {
+        "model_type": "cnn",
+        "v_hidden_sizes": [
+            128,
+            64
+        ],
+        "pi_hidden_sizes": [
+            64,
+            32
+        ],
+        "conv_layer_sizes": [
+            [
+                32,
+                8,
+                4
+            ],
+            [
+                64,
+                4,
+                2
+            ],
+            [
+                64,
+                3,
+                1
+            ]
+        ]
+    },
+    "ngpu": 1,
+    "steps_per_epoch": 1000,
+    "batch_size": 32,
+    "gamma": 0.99,
+    "clip_ratio": 0.25,
+    "pi_lr": 0.0003,
+    "vf_lr": 0.001,
+    "train_v_iters": 80,
+    "train_pi_iters": 80,
+    "lam": 0.9,
+    "max_ep_len": 200,
+    "target_kl": 0.01,
+    "save_freq": 1,
+    "tensorboard_logdir": "tf_logs/close_box-vision-v0/ppo/cnn"
+}

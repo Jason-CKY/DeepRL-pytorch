@@ -173,7 +173,7 @@ class TD3:
             next_Q = torch.min(next_q1, next_q2) * (1-terminals)
             Qprime = rewards + (self.gamma * next_Q)
         
-        # MSE loss
+        # MSBE loss
         loss_q = ((q1-Qprime)**2).mean() + ((q2-Qprime)**2).mean()
         loss_info = dict(Q1vals=q1.detach().cpu().numpy().tolist(),
                         Q2Vals=q2.detach().cpu().numpy().tolist())

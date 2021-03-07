@@ -158,8 +158,13 @@ The agents are trained on the front-rgb camera view to solve the RLBench Manipul
     <tbody>
         <tr>
             <td> open-box </td>
-            <td> <img src = 'Model_Weights\open_box-vision-v0\front_rgb\comparison.png'> </td>
-            <td><img src = 'Model_Weights\open_box-vision-v0\front_rgb\oc_conv\recording.gif'> </td>
+            <td> <img src = 'Model_Weights\open_box-vision-v0\comparison_full.png'> </td>
+            <td><img src = 'Model_Weights\open_box-vision-v0\oc_conv\recording.gif'> </td>
+        </tr>
+        <tr>
+            <td> close-box </td>
+            <td> <img src = 'Model_Weights\close_box-vision-v0\comparison_full.png'> </td>
+            <td><img src = 'Model_Weights\close_box-vision-v0\oc_vae\recording.gif'> </td>
         </tr>
     </tbody>
 </table>
