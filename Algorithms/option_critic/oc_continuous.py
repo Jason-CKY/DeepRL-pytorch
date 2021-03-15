@@ -380,8 +380,8 @@ class Option_Critic:
                 ep_ret += rewards
                 ep_len += 1                
 
-                if terminals:
-                    break
+                # if terminals:
+                    # break
         else:
             while not (terminals or (ep_len==self.max_ep_len)):
                 # select option

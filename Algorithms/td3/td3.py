@@ -15,9 +15,10 @@ from copy import deepcopy
 from torch.optim import Adam
 from tqdm import tqdm
 from itertools import chain
+from torch.utils.tensorboard import SummaryWriter
 
 class TD3:
-    def __init__(self, env_fn, save_dir, ac_kwargs=dict(), seed=0, 
+    def __init__(self, env_fn, save_dir, ac_kwargs=dict(), seed=0, tensorboard_logdir=None,
          replay_size=int(1e6), gamma=0.99, 
          tau=0.995, pi_lr=1e-3, q_lr=1e-3, batch_size=100, start_steps=10000, 
          update_after=1000, update_every=50, act_noise=0.1, num_test_episodes=10, 
@@ -117,6 +118,7 @@ class TD3:
 
         self.best_mean_reward = -np.inf
         self.save_dir = save_dir
+        self.tensorboard_logdir = tensorboard_logdir
 
     def reinit_network(self):
         '''
@@ -138,7 +140,7 @@ class TD3:
         self.pi_optimizer = Adam(self.ac.pi.parameters(), lr=self.pi_lr)
         self.q_optimizer = Adam(chain(self.ac.q1.parameters(), self.ac.q2.parameters()), lr=self.q_lr)
                 
-    def update(self, experiences, update_policy=False):
+    def update(self, experiences, timestep, update_policy=False):
         '''
         Do gradient updates for actor-critic models
         Args:
@@ -173,7 +175,7 @@ class TD3:
             next_Q = torch.min(next_q1, next_q2) * (1-terminals)
             Qprime = rewards + (self.gamma * next_Q)
         
-        # MSBE loss
+        # MSE loss
         loss_q = ((q1-Qprime)**2).mean() + ((q2-Qprime)**2).mean()
         loss_info = dict(Q1vals=q1.detach().cpu().numpy().tolist(),
                         Q2Vals=q2.detach().cpu().numpy().tolist())
@@ -182,6 +184,7 @@ class TD3:
         self.q_optimizer.step()
         # Record loss q and loss pi and qvals in the form of loss_info
         self.logger.store(LossQ=loss_q.item(), **loss_info)
+        self.tensorboard_logger.add_scalar("loss/q_loss", loss_q.item(), timestep)
 
         if update_policy:
             # --------------------- Optimizing actor ---------------------
@@ -200,7 +203,7 @@ class TD3:
                 
             # Record loss q and loss pi and qvals in the form of loss_info
             self.logger.store(LossPi=loss_pi.item())
-
+            self.tensorboard_logger.add_scalar("loss/pi_loss", loss_pi.item(), timestep)
             # update target networks
             with torch.no_grad():
                 for p, p_targ in zip(self.ac.parameters(), self.ac_targ.parameters()):
@@ -330,7 +333,7 @@ class TD3:
                     # Trick 2: “Delayed” Policy Updates.
                     update_policy = True if j%self.policy_delay==0 else False
                     experiences = self.replay_buffer.sample(self.batch_size)
-                    self.update(experiences, update_policy=update_policy)
+                    self.update(experiences, timestep, update_policy=update_policy)
             
             # End of trajectory/episode handling
             if done or (ep_len==self.max_ep_len):
@@ -340,6 +343,8 @@ class TD3:
                 episode += 1
                 # Retrieve training reward
                 x, y = self.logger.load_results(["EpLen", "EpRet"])
+                self.tensorboard_logger.add_scalar('episodic_return_train', ep_ret, timestep)
+                self.tensorboard_logger.flush()
                 if len(x) > 0:
                     # Mean training reward over the last 50 episodes
                     mean_reward = np.mean(y[-50:])
@@ -369,6 +374,7 @@ class TD3:
         self.env.training = True
         best_reward_trial = -np.inf
         for trial in range(num_trials):
+            self.tensorboard_logger = SummaryWriter(log_dir=os.path.join(self.tensorboard_logdir, f'{trial+1}'))
             self.learn_one_trial(timesteps, trial+1)
 
             if self.best_mean_reward > best_reward_trial:

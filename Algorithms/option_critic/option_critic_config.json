@@ -1,26 +1,41 @@
 {
     "oc_kwargs": {
-        "model_type": "vae",
-        "vae_weights_path": "VAE/output/open_box-vision-v0/front_rgb/fine_tune/open_box-vision-v0_front_rgb.pth",
+        "model_type": "cnn",
         "num_options": 4,
-        "hidden_sizes": [64, 64],
+        "hidden_sizes": [
+            64,
+            64
+        ],
         "conv_layer_sizes": [
-            [ 32, 8, 4],
-            [ 64, 4, 2],
-            [ 64, 3, 1]
+            [
+                32,
+                8,
+                4
+            ],
+            [
+                64,
+                4,
+                2
+            ],
+            [
+                64,
+                3,
+                1
+            ]
         ]
     },
     "eps_start": 1.0,
     "eps_end": 0.1,
-    "eps_decay": 1e4,
+    "eps_decay": 10000.0,
     "gamma": 0.99,
-    "lr": 1e-4,
+    "lr": 0.0001,
     "weight_decay": 0,
     "rollout_length": 20,
     "beta_reg": 0.01,
     "entropy_weight": 0.01,
     "gradient_clip": 5,
     "target_network_update_freq": 1000,
-    "max_ep_len": 300,
-    "save_freq": 1000
+    "max_ep_len": 200,
+    "save_freq": 1000,
+    "ngpu": 1
 }

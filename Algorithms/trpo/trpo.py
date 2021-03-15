@@ -15,10 +15,11 @@ from Logger.logger import Logger
 from copy import deepcopy
 from torch import optim
 from tqdm import tqdm
+from torch.utils.tensorboard import SummaryWriter
 
 class TRPO:
     
-    def __init__(self, env_fn, save_dir, ac_kwargs=dict(), seed=0, 
+    def __init__(self, env_fn, save_dir, ac_kwargs=dict(), seed=0, tensorboard_logdir = None,
          steps_per_epoch=400, batch_size=400, gamma=0.99, delta=0.01, vf_lr=1e-3,
          train_v_iters=80, damping_coeff=0.1, cg_iters=10, backtrack_iters=10, 
          backtrack_coeff=0.8, lam=0.97, max_ep_len=1000, logger_kwargs=dict(), 
@@ -109,6 +110,8 @@ class TRPO:
         self.best_mean_reward = -np.inf
         self.save_dir = save_dir
         self.save_freq = save_freq
+
+        self.tensorboard_logdir = tensorboard_logdir
 
     def reinit_network(self):
         '''
@@ -320,7 +323,7 @@ class TRPO:
         print("Rounded off to {} epochs with {} steps per epoch, total {} timesteps".format(epochs, self.steps_per_epoch, epochs*self.steps_per_epoch))
         start_time = time.time()
         obs, ep_ret, ep_len = self.env.reset(), 0, 0
-
+        ep_num = 0
         for epoch in tqdm(range(epochs)):
             for t in range(self.steps_per_epoch):
                 # step the environment
@@ -344,7 +347,9 @@ class TRPO:
                     else:
                         v = 0
 
+                    ep_num += 1
                     self.logger.store(EpRet=ep_ret, EpLen=ep_len)
+                    self.tensorboard_logger.add_scalar('episodic_return_train', ep_ret, epoch*self.steps_per_epoch + (t+1))
                     self.buffer.finish_path(v)
                     obs, ep_ret, ep_len = self.env.reset(), 0, 0
                     # Retrieve training reward
@@ -361,13 +366,15 @@ class TRPO:
                             self.best_mean_reward = mean_reward
                             self.save_weights(fname=f"best_{trial_num}.pth")
                         
-                        if self.best_mean_reward >= self.env.spec.reward_threshold:
+                        if self.env.spec.reward_threshold is not None and self.best_mean_reward >= self.env.spec.reward_threshold:
                             print("Solved Environment, stopping iteration...")
                             return
 
             # update value function and TRPO policy update
             self.update()
             self.logger.dump()
+            if self.save_freq > 0 and epoch % self.save_freq == 0:
+                self.save_weights(fname=f"latest_{trial_num}.pth")
             
     def learn(self, timesteps, num_trials=1):
         '''
@@ -379,6 +386,7 @@ class TRPO:
         self.env.training = True
         best_reward_trial = -np.inf
         for trial in range(num_trials):
+            self.tensorboard_logger = SummaryWriter(log_dir=os.path.join(self.tensorboard_logdir, f'{trial+1}'))
             self.learn_one_trial(timesteps, trial+1)
 
             if self.best_mean_reward > best_reward_trial:

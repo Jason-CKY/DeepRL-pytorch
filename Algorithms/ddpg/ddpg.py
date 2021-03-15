@@ -13,9 +13,10 @@ from Logger.logger import Logger
 from copy import deepcopy
 from torch.optim import Adam
 from tqdm import tqdm
+from torch.utils.tensorboard import SummaryWriter
 
 class DDPG:
-    def __init__(self, env_fn, save_dir, ac_kwargs=dict(), seed=0, 
+    def __init__(self, env_fn, save_dir, ac_kwargs=dict(), seed=0, tensorboard_logdir = None,
          replay_size=int(1e6), gamma=0.99, 
          tau=0.995, pi_lr=1e-3, q_lr=1e-3, batch_size=100, start_steps=10000, 
          update_after=1000, update_every=50, act_noise=0.1, num_test_episodes=10, 
@@ -105,7 +106,8 @@ class DDPG:
 
         self.best_mean_reward = -np.inf
         self.save_dir = save_dir
-        
+        self.tensorboard_logdir = tensorboard_logdir
+
     def reinit_network(self):
         '''
         Re-initialize network weights and optimizers for a fresh agent to train
@@ -127,7 +129,7 @@ class DDPG:
         self.pi_optimizer = Adam(self.ac.pi.parameters(), lr=self.pi_lr)
         self.q_optimizer = Adam(self.ac.q.parameters(), lr=self.q_lr)
 
-    def update(self, experiences):
+    def update(self, experiences, timestep):
         '''
         Do gradient updates for actor-critic models
         Args:
@@ -175,7 +177,8 @@ class DDPG:
             
         # Record loss q and loss pi and qvals in the form of loss_info
         self.logger.store(LossQ=loss_q.item(), LossPi=loss_pi.item(), **loss_info)
-
+        self.tensorboard_logger.add_scalar("loss/q_loss", loss_q.item(), timestep)
+        self.tensorboard_logger.add_scalar("loss/pi_loss", loss_pi.item(), timestep)
         # update target networks
         with torch.no_grad():
             for p, p_targ in zip(self.ac.parameters(), self.ac_targ.parameters()):
@@ -305,11 +308,13 @@ class DDPG:
             if timestep>=self.update_after and (timestep+1)%self.update_every==0:
                 for _ in range(self.update_every):
                     experiences = self.replay_buffer.sample(self.batch_size)
-                    self.update(experiences)
+                    self.update(experiences, timestep)
             
             # End of trajectory/episode handling
             if done or (ep_len==self.max_ep_len):
                 self.logger.store(EpRet=ep_ret, EpLen=ep_len)
+                self.tensorboard_logger.add_scalar('episodic_return_train', ep_ret, timestep)
+                self.tensorboard_logger.flush()
                 # print(f"Episode reward: {ep_ret} | Episode Length: {ep_len}")
                 state, ep_ret, ep_len = self.env.reset(), 0, 0
                 episode += 1
@@ -333,6 +338,9 @@ class DDPG:
 
                 # self.evaluate_agent()
                 self.logger.dump()
+
+            if self.save_freq > 0 and timestep % self.save_freq == 0:
+                self.save_weights(fname=f"latest_{trial_num}.pth")
         
 
     def learn(self, timesteps, num_trials=1):
@@ -344,6 +352,7 @@ class DDPG:
         self.env.training=True
         best_reward_trial = -np.inf
         for trial in range(num_trials):
+            self.tensorboard_logger = SummaryWriter(log_dir=os.path.join(self.tensorboard_logdir, f'{trial+1}'))
             self.learn_one_trial(timesteps, trial+1)
             
             if self.best_mean_reward > best_reward_trial:

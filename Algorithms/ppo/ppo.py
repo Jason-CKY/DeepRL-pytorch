@@ -16,9 +16,10 @@ from Logger.logger import Logger
 from copy import deepcopy
 from torch import optim
 from tqdm import tqdm
+from torch.utils.tensorboard import SummaryWriter
 
 class PPO:
-    def __init__(self, env_fn, save_dir, ac_kwargs=dict(), seed=0, 
+    def __init__(self, env_fn, save_dir, ac_kwargs=dict(), seed=0, tensorboard_logdir = None,
          steps_per_epoch=400, batch_size=400, gamma=0.99, clip_ratio=0.2, 
          vf_lr=1e-3, pi_lr=3e-4, train_v_iters=80, train_pi_iters=80, 
          lam=0.97, max_ep_len=1000, target_kl=0.01, logger_kwargs=dict(), save_freq=10, ngpu=1):
@@ -100,6 +101,8 @@ class PPO:
         self.best_mean_reward = -np.inf
         self.save_dir = save_dir
         self.save_freq = save_freq
+
+        self.tensorboard_logdir = tensorboard_logdir
 
     def reinit_network(self):
         '''
@@ -222,7 +225,7 @@ class PPO:
         print("Rounded off to {} epochs with {} steps per epoch, total {} timesteps".format(epochs, self.steps_per_epoch, epochs*self.steps_per_epoch))
         start_time = time.time()
         obs, ep_ret, ep_len = self.env.reset(), 0, 0
-
+        ep_num = 0
         for epoch in tqdm(range(epochs)):
             for t in range(self.steps_per_epoch):
                 # step the environment
@@ -246,7 +249,9 @@ class PPO:
                     else:
                         v = 0
 
+                    ep_num += 1
                     self.logger.store(EpRet=ep_ret, EpLen=ep_len)
+                    self.tensorboard_logger.add_scalar('episodic_return_train', ep_ret, epoch*self.steps_per_epoch + (t+1))
                     self.buffer.finish_path(v)
                     obs, ep_ret, ep_len = self.env.reset(), 0, 0
                     # Retrieve training reward
@@ -270,6 +275,8 @@ class PPO:
             # update value function and PPO policy update
             self.update()
             self.logger.dump()
+            if self.save_freq > 0 and epoch % self.save_freq == 0:
+                self.save_weights(fname=f"latest_{trial_num}.pth")
 
     def learn(self, timesteps, num_trials=1):
         '''
@@ -281,6 +288,7 @@ class PPO:
         self.env.training = True
         best_reward_trial = -np.inf
         for trial in range(num_trials):
+            self.tensorboard_logger = SummaryWriter(log_dir=os.path.join(self.tensorboard_logdir, f'{trial+1}'))
             self.learn_one_trial(timesteps, trial+1)
 
             if self.best_mean_reward > best_reward_trial:
