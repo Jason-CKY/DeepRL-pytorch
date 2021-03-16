@@ -102,7 +102,6 @@ def parse_arguments():
     parser.add_argument('--window', type=int, default=50, help="window for moving average")
     parser.add_argument('--maxlen', type=int, default=-1, help="max length for plotting")
     parser.add_argument('--save', action='store_true', help='if true, save the plot to log directory')
-    parser.add_argument('--baseline', action='store_true', help='if true, plot the results alongside stable_baselines3 trained model')
     parser.add_argument('--compare', action='store_true', help='if true, plot the results alongside every other algorithm trained on the same environment')
     return parser.parse_args()
 
@@ -120,18 +119,7 @@ def main():
     elif args.agent is not None:
         path = os.path.join("Model_Weights", args.env, args.agent)
         plot_results(logs_dir=path, plot_label=args.agent, window=args.window, maxlen=args.maxlen)
-
-    elif args.baseline:
-        log_dir = os.path.join("Stable_Baselines", "logs", os.path.sep.join(args.log_dir.split(os.path.sep)[1:]))
-        from stable_baselines3.common.results_plotter import load_results, ts2xy
-        x2, y2 = ts2xy(load_results(log_dir), 'timesteps')
-        y2 = moving_average(y2, window=50)
-        # Truncate x
-        x2 = x2[len(x2) - len(y2):]
-        x2, y2 = standardise_graph(x, y, x2, y2)
-
-        plt.plot(x2, y2, label="Stable_Baselines3 implementation")
-    
+   
     plt.legend()
     plt.xlabel('Number of Timesteps')
     plt.ylabel('Rewards')
