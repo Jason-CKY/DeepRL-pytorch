@@ -1,3 +1,9 @@
+# Project Deprecated
+
+Please note that there will not be any updates to this project in the foreseeable future. Please do not add any issues to this repo expecting a fix or explanation. Some of the libraries have had breaking updates (gym) and my `requirements.txt` did not state the version requirements and its pretty much impossible to reproduce the experiments now. However, there is value in looking at the implementation of the various RL algorithms.
+
+Please consider forking this project if you want to continue working on it and provide support with newer environments and libraries.
+
 # Deep RL policies on Pybullet Environments
 
 This repo is a pytorch implementation of various deep RL algorithms, trained and evaluated on pybullet robotic environments.
